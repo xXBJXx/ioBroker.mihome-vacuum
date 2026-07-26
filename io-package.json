@@ -176,11 +176,13 @@
   },
   "encryptedNative": [
     "password",
-    "token"
+    "token",
+    "cloudSession"
   ],
   "protectedNative": [
     "password",
-    "token"
+    "token",
+    "cloudSession"
   ],
   "messages": [
     {
