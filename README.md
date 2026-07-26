@@ -120,6 +120,15 @@ If this option is disabled, the vacuum will start a new "normal cleaning" when y
 If two robots are to be controlled via ioBroker, two instances must be created. For the second robot the own port (default: 53421) for IoBroker must changed, so that both robots can archieve ioBroker via different ports.
 
 ## Map Config
+
+### Xiaomi Cloud QR login
+
+Xiaomi no longer reliably supports the former username/password login used by this adapter. Cloud features (device discovery and Xiaomi cloud maps) now use Xiaomi's QR login. Start it in the adapter configuration with **Start Xiaomi QR login**, open the displayed URL, then scan and confirm it in the Xiaomi Home app. The same URL and progress are also available as `auth.loginUrl` and `auth.status`.
+
+The login URL expires after a few minutes. If `auth.status` becomes `expired` or `error`, start the login again. After `authenticated`, use **get devices** as before. The selected Xiaomi region still controls which regional API is queried; use the region in which the vacuum is registered.
+
+The adapter stores the Xiaomi session (cookies, user ID, security value and service token) in encrypted/protected adapter configuration so it can be reused after a restart. It does not log these values. The existing e-mail/password fields remain for compatibility with saved configurations, but new cloud logins do not use them. Local vacuum control by IP/token remains independent of Xiaomi Cloud authentication.
+
 There are two ways to get the map. The first get the map from the cloud. Therefore, you have to log in and select the right robot from the list
 
 Second way is the map from valetudo (only local connection). 

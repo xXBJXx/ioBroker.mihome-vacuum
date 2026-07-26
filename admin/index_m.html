@@ -265,8 +265,6 @@
                 }
                 $getDevices.addClass('disabled');
                 $('#loader1').removeClass('seenot');
-                let pass = $('#password').val();
-                let user = $('#email').val();
                 let server = $('#server').val();
                 //console.log("send to..." + user + " server: " + server);
 
@@ -277,14 +275,7 @@
                     return
                 }
                 if (!authObj){
-                    authObj= {
-                        password: pass,
-                        username: user,
-                        captCode: true
-                    }
-                }
-                if ($captcha.val()){
-                    authObj.captCode= $captcha.val();
+                    authObj = {};
                 }
                 sendTo(adapter + "." + instance, 'discovery', {
                     authObj: authObj,
@@ -309,6 +300,29 @@
                 });
 
             });
+
+            function updateCloudAuth() {
+                socket.emit('getForeignStates', namespace + 'auth.*', function (err, states) {
+                    if (err || !states) return;
+                    const status = states[namespace + 'auth.status'] && states[namespace + 'auth.status'].val || 'not_authenticated';
+                    const loginUrl = states[namespace + 'auth.loginUrl'] && states[namespace + 'auth.loginUrl'].val || '';
+                    const lastError = states[namespace + 'auth.lastError'] && states[namespace + 'auth.lastError'].val || '';
+                    $('#cloudAuthStatus').text(status + (lastError ? ': ' + lastError : ''));
+                    $('#cloudLoginUrl').attr('href', loginUrl).text(loginUrl || '');
+                    $('#startCloudLogin').toggleClass('disabled', status === 'waiting_for_scan' || status === 'waiting_for_confirmation');
+                });
+            }
+
+            $('#startCloudLogin').on('click', function () {
+                if (!active || $(this).hasClass('disabled')) return;
+                $(this).addClass('disabled');
+                sendTo(adapter + '.' + instance, 'startCloudLogin', {}, function (result) {
+                    if (result && result.err) showToast(_('ERROR: ') + result.err);
+                    updateCloudAuth();
+                });
+            });
+            updateCloudAuth();
+            setInterval(updateCloudAuth, 3000);
 
             socket.emit('getState', 'system.adapter.' + adapter + '.' + instance + '.alive', function (err, state) {
                 active = /*common.enabled ||*/ (state && state.val);
@@ -672,6 +686,18 @@
                     <div class="col s12">
                         <h6 class="title translate" data-lang="Xiaomi cloud login">Cloud login</h6>
                     </div>
+                </div>
+                <div class="row">
+                    <div class="col s12 m3 l2">
+                        <a id="startCloudLogin" class="btn-small">Start Xiaomi QR login</a>
+                    </div>
+                    <div class="col s12 m9 l10">
+                        <div>Cloud status: <span id="cloudAuthStatus">not_authenticated</span></div>
+                        <a id="cloudLoginUrl" target="_blank" rel="noopener noreferrer"></a>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col s12">Use the QR login above, then click “get devices”. E-mail, password and captcha are kept only for backwards-compatible configuration and are no longer sent for new logins.</div>
                 </div>
                 <div class="row">
                     <div class="col s12 m4 l2 input-field">
