@@ -45,6 +45,8 @@ function createManager(sendMessage = async () => ({})) {
         setState: () => undefined,
         setStateChanged: () => undefined,
         setObjectAsync: async id => objectUpdates.push(id),
+        setObjectNotExistsAsync: async id => objectUpdates.push(id),
+        delObjectAsync: async () => undefined,
     };
     const originalMain = VacuumManager.prototype.main;
     VacuumManager.prototype.main = () => undefined;
@@ -62,6 +64,37 @@ function createManager(sendMessage = async () => ({})) {
 }
 
 describe('VacuumManager lifecycle', () => {
+    it('waits for resume-state cleanup without deleting the shared control channel', async () => {
+        const { manager, adapter } = createManager();
+        adapter.config.enableResumeZone = true;
+        const deletedIds = [];
+        /** @type {() => void} */
+        let releaseDeletes = () => undefined;
+        const deleteGate = new Promise(resolve => {
+            releaseDeletes = () => resolve(undefined);
+        });
+        adapter.delObjectAsync = async id => {
+            deletedIds.push(id);
+            await deleteGate;
+            return undefined;
+        };
+
+        let initializationCompleted = false;
+        const initialization = manager.init().then(() => {
+            initializationCompleted = true;
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.deepEqual(deletedIds.sort(), ['control.resumeRoomClean', 'control.resumeZoneClean']);
+        assert.equal(deletedIds.includes('control'), false);
+        assert.equal(initializationCompleted, false);
+
+        releaseDeletes();
+        await initialization;
+        assert.equal(initializationCompleted, true);
+        await manager.close();
+    });
+
     it('keeps asynchronous status writes isolated between adapter instances', async () => {
         /** @type {(value: any) => void} */
         let releaseStatus = _value => undefined;

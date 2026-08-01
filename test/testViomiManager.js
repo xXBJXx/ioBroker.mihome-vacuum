@@ -27,6 +27,42 @@ async function waitForPolling() {
 }
 
 describe('ViomiManager status polling', () => {
+    it('waits for all state definitions during initialization', async () => {
+        const adapter = createAdapter();
+        /** @type {() => void} */
+        let releaseWrites = () => undefined;
+        const writeGate = new Promise(resolve => {
+            releaseWrites = () => resolve(undefined);
+        });
+        const writtenIds = [];
+        adapter.setObjectNotExistsAsync = async id => {
+            writtenIds.push(id);
+            await writeGate;
+        };
+        const originalMain = ViomiManager.prototype.main;
+        ViomiManager.prototype.main = async () => undefined;
+        let manager;
+        try {
+            manager = new ViomiManager(adapter, { sendMessage: async () => ({}) });
+        } finally {
+            ViomiManager.prototype.main = originalMain;
+        }
+
+        let initializationCompleted = false;
+        const initialization = manager.initStates().then(() => {
+            initializationCompleted = true;
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(writtenIds.includes('control.run_state'), true);
+        assert.equal(initializationCompleted, false);
+
+        releaseWrites();
+        await initialization;
+        assert.equal(initializationCompleted, true);
+        await manager.close();
+    });
+
     it('does not log complete Viomi responses', async () => {
         const adapter = createAdapter();
         const manager = new ViomiManager(adapter, {
