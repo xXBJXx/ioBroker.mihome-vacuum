@@ -28,4 +28,13 @@ describe('Runtime dependencies', () => {
         const regressionJob = workflow.slice(workflow.indexOf('    regression-tests:'), workflow.indexOf('    check-and-lint:'));
         assert.doesNotMatch(regressionJob, /^        needs:/m);
     });
+
+    it('ships only the declared Materialize configuration page', () => {
+        const ioPackage = require('../io-package.json');
+        const adminDirectory = path.join(__dirname, '..', 'admin');
+
+        assert.equal(ioPackage.common.adminUI.config, 'materialize');
+        assert.equal(fs.existsSync(path.join(adminDirectory, 'index_m.html')), true);
+        assert.equal(fs.existsSync(path.join(adminDirectory, 'index.html')), false);
+    });
 });
