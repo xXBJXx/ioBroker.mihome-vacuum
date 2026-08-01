@@ -10,8 +10,11 @@
 const utils = require('@iobroker/adapter-core');
 const XiaomiCloudConnector = require('./lib/XiaomiCloudConnector');
 const miio = require('./lib/miio');
-/** @type {any} Legacy ioBroker object definitions are runtime-validated by package tests. */
-const objects = require('./lib/objects');
+/** @typedef {ioBroker.SettableObject & {_id?: string, id?: string}} LegacyObjectDefinition */
+const objects =
+    /** @type {{deviceInfo: LegacyObjectDefinition[], customCommands: LegacyObjectDefinition[], iotState: LegacyObjectDefinition[]}} */ (
+        /** @type {unknown} Legacy definitions are runtime-validated by package tests. */ (require('./lib/objects'))
+    );
 
 const ViomiManager = require('./lib/viomi');
 const VacuumManager = require('./lib/vacuum');
@@ -279,13 +282,14 @@ class MihomeVacuum extends utils.Adapter {
             common: { name: 'Xiaomi Cloud authentication' },
             native: {},
         });
-        /** @type {Record<string, any>} */
-        const states = {
-            status: { name: 'Authentication status', type: 'string', role: 'text', def: 'not_authenticated' },
-            loginUrl: { name: 'Xiaomi QR login URL', type: 'string', role: 'text.url', def: '' },
-            lastError: { name: 'Last authentication error', type: 'string', role: 'text', def: '' },
-            expiresAt: { name: 'QR login expiry timestamp', type: 'number', role: 'value.time', def: 0 },
-        };
+        const states = /** @type {Record<string, ioBroker.StateCommon>} */ (
+            /** @type {unknown} Legacy definitions omit explicit read/write defaults. */ ({
+                status: { name: 'Authentication status', type: 'string', role: 'text', def: 'not_authenticated' },
+                loginUrl: { name: 'Xiaomi QR login URL', type: 'string', role: 'text.url', def: '' },
+                lastError: { name: 'Last authentication error', type: 'string', role: 'text', def: '' },
+                expiresAt: { name: 'QR login expiry timestamp', type: 'number', role: 'value.time', def: 0 },
+            })
+        );
         await Promise.all(
             Object.entries(states).map(([id, common]) =>
                 this.setObjectNotExistsAsync(`auth.${id}`, {
