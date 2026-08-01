@@ -2,6 +2,44 @@ const assert = require('node:assert/strict');
 const RoomManager = require('../lib/roomManager');
 
 describe('RoomManager object lookup', () => {
+    it('creates room channels through the supported object API', async () => {
+        const objects = new Map();
+        const states = new Map();
+        const adapter = {
+            namespace: 'mihome-vacuum.test',
+            log: { info: () => undefined, warn: () => undefined },
+            setObject: () => undefined,
+            getStates: (_pattern, callback) => callback(null, {}),
+            async setObjectNotExistsAsync(id, object) {
+                objects.set(id, object);
+            },
+            async setStateAsync(id, value, ack) {
+                states.set(id, { value, ack });
+            },
+        };
+        const manager = new RoomManager(adapter, {
+            cleanRoom: 'Clean room',
+            cleanRooms: 'Clean rooms',
+            loadRooms: 'Load rooms',
+            cleanMultiRooms: 'Clean multiple rooms',
+            addRoom: 'Add room',
+        });
+        const updatedRooms = [];
+        manager.updateRoomStates = id => updatedRooms.push(id);
+
+        await manager.createRoom('living', 16);
+
+        assert.deepEqual(objects.get('rooms.living'), {
+            type: 'channel',
+            common: { name: 'living' },
+            native: {},
+        });
+        assert.equal(objects.get('rooms.living.mapIndex').common.type, 'number');
+        assert.deepEqual(states.get('rooms.living.mapIndex'), { value: 16, ack: true });
+        assert.deepEqual(updatedRooms, ['rooms.living']);
+        assert.equal('createChannel' in adapter, false);
+    });
+
     it('keeps object lookups isolated between adapter instances', async () => {
         const createAdapter = namespace => {
             const foreignPatterns = [];
