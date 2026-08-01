@@ -1,106 +1,107 @@
-const axios = require('axios').default;
-//const zlib = require('zlib');
-const zlib = require('node:zlib');
-const RRMapParser = require('./RRMapParser');
-//const mapCreator = require('./mapCreator');
-// libs for Cloudmap
-const XiaomiCloudConnector = require('./XiaomiCloudConnector');
+/* eslint-disable @typescript-eslint/only-throw-error, @typescript-eslint/prefer-promise-reject-errors, @typescript-eslint/require-await */
+import axios from 'axios';
+import { createRequire } from 'node:module';
+import * as zlib from 'node:zlib';
+import XiaomiCloudConnector from '../../lib/XiaomiCloudConnector';
+import RRMapParser from './RRMapParser';
+import type { MapCreatorModule, MapHelperAdapter, MapHelperConfig, MapUrlResponse } from '../types/mapHelper';
+import type { RRMapData } from '../types/rrMap';
 
-// Load only if map rendering is selected because canvas is an optional dependency.
-function loadMapCreator() {
+interface CloudConnector {
+    loggedIn(): boolean;
+    executeEncryptedApiCall(url: string, params: { data: string }): Promise<unknown>;
+    shutdown(): void;
+}
+
+interface CachedMapUrl {
+    expires: number;
+    url: string;
+}
+
+type MapResult = [unknown, number[], RRMapData['currently_cleaned_zones'], RRMapData['goto_target']];
+
+const runtimeRequire = createRequire(__filename);
+
+const adapterHelper: MapHelperAdapter = {
+    config: {},
+    log: {
+        info: message => console.log(`INFO: ${String(message)}`),
+        error: message => console.log(`ERROR: ${String(message)}`),
+        debug: message => console.log(`DEBUG: ${String(message)}`),
+        warn: message => console.log(`WARN: ${String(message)}`),
+    },
+};
+
+function loadMapCreator(): MapCreatorModule | null {
     try {
-        return require('./mapCreator');
+        return runtimeRequire('../../lib/mapCreator') as MapCreatorModule;
     } catch (error) {
         console.warn(error);
         return null;
     }
 }
 
-//helpermap just for dev
-// let maptest = '["robomap%2F74476450%2F0"]';
 class MapHelper {
-    constructor(options, adapter) {
-        if (typeof adapter === 'undefined') {
-            adapter = adapter_helper;
-        }
-        let did;
+    readonly adapter: MapHelperAdapter;
+    ready = false;
+    shutdownComplete = false;
+    readonly mapUrlCache = new Map<string, CachedMapUrl>();
+    mapCreator: MapCreatorModule | null = null;
+    readonly config: MapHelperConfig;
+    readonly cloudConnector: CloudConnector;
+
+    constructor(_options: unknown, adapter: MapHelperAdapter = adapterHelper) {
+        let deviceId: string | undefined;
         if (adapter.config.devices) {
             try {
-                did = JSON.parse(adapter.config.devices).did;
+                const devices = JSON.parse(adapter.config.devices) as { did?: string };
+                deviceId = devices.did;
             } catch {
                 adapter.log.debug('Map helper: configured cloud device data is not valid JSON');
             }
         }
         this.adapter = adapter;
-        this.ready = false;
-        this.shutdownComplete = false;
-        this.mapUrlCache = new Map();
-        this.mapCreator = null;
-
         this.config = {
-            username: adapter && adapter.config && adapter.config.email ? adapter.config.email : '',
-            password: adapter && adapter.config && adapter.config.password ? adapter.config.password : '',
-            deviceId: did ? did : '',
-            server: adapter && adapter.config && adapter.config.server ? adapter.config.server : '-',
-            valetudo:
-                adapter && adapter.config && adapter.config.valetudo_enable ? adapter.config.valetudo_enable : false,
-            mimap: adapter && adapter.config && adapter.config.enableMiMap ? adapter.config.enableMiMap : false,
-            ip: adapter && adapter.config && adapter.config.ip ? adapter.config.ip : '',
+            username: adapter.config.email || '',
+            password: adapter.config.password || '',
+            deviceId: deviceId || '',
+            server: adapter.config.server || '-',
+            valetudo: adapter.config.valetudo_enable || false,
+            mimap: adapter.config.enableMiMap || false,
+            ip: adapter.config.ip || '',
             COLOR_OPTIONS: {
                 FLOORCOLOR: adapter.config.valetudo_color_floor,
                 WALLCOLOR: adapter.config.valetudo_color_wall,
                 PATHCOLOR: adapter.config.valetudo_color_path,
                 ROBOT: adapter.config.robot_select,
-                newmap: adapter && adapter.config && adapter.config.newmap ? adapter.config.newmap : false,
+                newmap: adapter.config.newmap || false,
             },
         };
         if (this.config.valetudo || this.config.mimap) {
             this.mapCreator = loadMapCreator();
             adapter.log.debug(`load Map creator... ${Boolean(this.mapCreator)}`);
         }
-
         this.cloudConnector = new XiaomiCloudConnector(adapter.log, {}, adapter);
-        //this.adapter.log.debug("Maphelper_config___" + JSON.stringify(this.config));
-        //this.login();
     }
 
-    getRawMapData(urlstring) {
-        let url;
+    getRawMapData(urlString?: string): Promise<unknown> {
+        const url =
+            urlString !== undefined && this.config.mimap ? urlString : `http://${this.config.ip}/api/map/latest`;
 
-        // micloud
-        if (typeof urlstring !== 'undefined' && this.config.mimap) {
-            url = urlstring;
-        } else {
-            // Valetudo
-            url = `http://${this.config.ip}/api/map/latest`;
-        }
-
-        // Return new promise
-        return new Promise(function (resolve, reject) {
+        return new Promise((resolve, reject) => {
             axios
-                .get(url, {
-                    responseType: 'arraybuffer', // wichtig für Binärdaten
-                    decompress: false, // wir entpacken manuell
-                })
+                .get(url, { responseType: 'arraybuffer', decompress: false })
                 .then(response => {
-                    const status = response.status;
                     const buffer = Buffer.from(response.data);
-
-                    if (status !== 200) {
-                        if (status === 404) {
-                            reject('wrong server selected');
-                        } else {
-                            reject('no map found on server');
-                        }
+                    if (response.status !== 200) {
+                        reject(response.status === 404 ? 'wrong server selected' : 'no map found on server');
                         return;
                     }
-
                     try {
                         if (buffer[0x00] === 0x1f && buffer[0x01] === 0x8b) {
-                            // gzip-Daten
-                            zlib.gunzip(buffer, (err, decoded) => {
-                                if (err) {
-                                    reject(err);
+                            zlib.gunzip(buffer, (error, decoded) => {
+                                if (error) {
+                                    reject(error);
                                 } else {
                                     resolve(RRMapParser.PARSEDATA(decoded));
                                 }
@@ -108,43 +109,41 @@ class MapHelper {
                         } else {
                             resolve(JSON.parse(buffer.toString('utf8')));
                         }
-                    } catch (e) {
-                        reject(e);
-                    }
-                })
-                .catch(err => {
-                    reject(err);
-                });
-        });
-    }
-
-    getMapBase64(url) {
-        return new Promise((resolve, reject) => {
-            const mapCreator = this.mapCreator;
-            if (!mapCreator || !mapCreator.CanvasMap) {
-                this.adapter.log.warn(
-                    'CANVAS package not installed....please install Canvas package manually or disable Map in config see also https://github.com/iobroker-community-adapters/ioBroker.mihome-vacuum#error-at-installation',
-                );
-                this.config.mimap = false;
-                this.config.valetudo = false;
-                return reject('CanvasMap not loaded');
-            }
-            this.getRawMapData(url)
-                .then(data => {
-                    try {
-                        //(self.adapter.log.debug(JSON.stringify(data));
-                        const map = mapCreator.CanvasMap(data, this.config.COLOR_OPTIONS, this.adapter);
-                        //console.log('<img src="' + map.toDataURL() + '" /style="width: auto ;height: 100%;">')
-                        resolve([map, data.image.segments.id, data.currently_cleaned_zones, data.goto_target]);
-                    } catch (e) {
-                        reject(e);
+                    } catch (error) {
+                        reject(error);
                     }
                 })
                 .catch(error => reject(error));
         });
     }
 
-    login() {
+    getMapBase64(url?: string): Promise<MapResult> {
+        return new Promise((resolve, reject) => {
+            const mapCreator = this.mapCreator;
+            if (!mapCreator?.CanvasMap) {
+                this.adapter.log.warn(
+                    'CANVAS package not installed....please install Canvas package manually or disable Map in config see also https://github.com/iobroker-community-adapters/ioBroker.mihome-vacuum#error-at-installation',
+                );
+                this.config.mimap = false;
+                this.config.valetudo = false;
+                reject('CanvasMap not loaded');
+                return;
+            }
+            this.getRawMapData(url)
+                .then(rawData => {
+                    try {
+                        const data = rawData as RRMapData;
+                        const map = mapCreator.CanvasMap(data, this.config.COLOR_OPTIONS, this.adapter);
+                        resolve([map, data.image!.segments.id, data.currently_cleaned_zones, data.goto_target]);
+                    } catch (error) {
+                        reject(error);
+                    }
+                })
+                .catch(error => reject(error));
+        });
+    }
+
+    login(): Promise<{ ok: true }> {
         if (this.cloudConnector.loggedIn()) {
             return Promise.resolve({ ok: true });
         }
@@ -153,27 +152,26 @@ class MapHelper {
         );
     }
 
-    updateMap(mapurl, dontRetry) {
+    updateMap(mapUrl: string, dontRetry?: boolean): Promise<unknown> {
         return new Promise((resolve, reject) => {
-            // if mimap is selected
             if (this.config.mimap === true) {
                 this.adapter.log.debug('update_Map Mimap enabled');
                 if (dontRetry && this.cloudConnector.loggedIn()) {
                     this.adapter.log.debug('dont retry');
-                    return reject('dont repeat');
+                    reject('dont repeat');
+                    return;
                 }
                 const unixTime = Math.floor(Date.now() / 1000);
-                const cachedMapUrl = this.mapUrlCache.get(mapurl);
+                const cachedMapUrl = this.mapUrlCache.get(mapUrl);
                 if (!cachedMapUrl || cachedMapUrl.expires < unixTime - 60) {
                     this.adapter.log.debug('update_Map need new mapurl');
-                    this.getMapURL(mapurl)
+                    this.getMapURL(mapUrl)
                         .then(result => {
                             const newMapUrl = {
                                 expires: result.result.expires_time,
                                 url: result.result.url,
                             };
-                            this.mapUrlCache.set(mapurl, newMapUrl);
-
+                            this.mapUrlCache.set(mapUrl, newMapUrl);
                             this.adapter.log.debug('update_Map received new cloud map location');
                             this.adapter.log.debug(`update_Map got new expires:${newMapUrl.expires}`);
                             this.adapter.log.debug(`update_Map got new time:${unixTime}`);
@@ -181,11 +179,11 @@ class MapHelper {
                                 .then(mapData => resolve(mapData))
                                 .catch(error => reject(error));
                         })
-                        .catch(_error => {
+                        .catch(() => {
                             this.adapter.log.warn('Map request failed');
                             if (!dontRetry) {
                                 this.login()
-                                    .then(() => this.updateMap(mapurl, true))
+                                    .then(() => this.updateMap(mapUrl, true))
                                     .catch(error => reject(error));
                             }
                         });
@@ -203,74 +201,47 @@ class MapHelper {
         });
     }
 
-    getMapURL(mapName) {
-        return new Promise((resolve, reject) =>
+    getMapURL(mapName: string): Promise<MapUrlResponse> {
+        return new Promise((resolve, reject) => {
             this.login()
                 .then(() => {
-                    let url;
-                    if (this.config.server === '-') {
-                        url = 'https://api.io.mi.com/app/home/getmapfileurl';
-                    } else {
-                        url = `https://${this.config.server}.api.io.mi.com/app/home/getmapfileurl`;
-                    }
-                    const data = JSON.stringify({
-                        obj_name: mapName,
-                    });
+                    const url =
+                        this.config.server === '-'
+                            ? 'https://api.io.mi.com/app/home/getmapfileurl'
+                            : `https://${this.config.server}.api.io.mi.com/app/home/getmapfileurl`;
+                    const data = JSON.stringify({ obj_name: mapName });
                     this.cloudConnector
                         .executeEncryptedApiCall(url, { data })
-                        .then(json => {
+                        .then(rawResponse => {
+                            const response = rawResponse as Partial<MapUrlResponse>;
                             try {
-                                if (json.message === 'ok') {
-                                    resolve(json);
+                                if (response.message === 'ok') {
+                                    resolve(response as MapUrlResponse);
                                 } else {
-                                    throw json.message;
+                                    throw response.message;
                                 }
                             } catch {
                                 this.adapter.log.error('Error when receiving map URL');
                                 reject(new Error('Map URL request was rejected'));
                             }
                         })
-                        .catch(_error => {
+                        .catch(() => {
                             this.adapter.log.warn('Error while requesting map URL');
                             reject(new Error('Map URL request failed'));
                         });
                 })
-                .catch(error => reject(error)),
-        );
+                .catch(error => reject(error));
+        });
     }
 
-    async shutdown() {
+    async shutdown(): Promise<void> {
         if (this.shutdownComplete) {
             return;
         }
         this.shutdownComplete = true;
         this.mapUrlCache.clear();
-        this.cloudConnector?.shutdown();
+        this.cloudConnector.shutdown();
     }
 }
 
-// just for testing
-//-----------------------------------
-const adapter_helper = {
-    log: {
-        info: function (msg) {
-            console.log(`INFO: ${msg}`);
-        },
-        error: function (msg) {
-            console.log(`ERROR: ${msg}`);
-        },
-        debug: function (msg) {
-            console.log(`DEBUG: ${msg}`);
-        },
-        warn: function (msg) {
-            console.log(`WARN: ${msg}`);
-        },
-    },
-    msg: {
-        info: [],
-        error: [],
-        debug: [],
-        warn: [],
-    },
-};
-module.exports = MapHelper;
+export = MapHelper;
