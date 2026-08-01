@@ -1,7 +1,4 @@
-interface StockCommand {
-    method: string;
-    params?: string;
-}
+import type { StockCommand } from '../types/miio';
 
 const commands = {
     find: { method: 'find_me' },
