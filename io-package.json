@@ -160,12 +160,12 @@
     "tier": 2,
     "dependencies": [
       {
-        "js-controller": ">=5.0.19"
+        "js-controller": ">=7.2.2"
       }
     ],
     "globalDependencies": [
       {
-        "admin": ">=7.4.10"
+        "admin": ">=7.9.13"
       }
     ],
     "plugins": {

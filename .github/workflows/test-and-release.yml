@@ -22,12 +22,12 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
-            - name: Use Node.js 20.x
-              uses: actions/setup-node@v4
+            - name: Use Node.js 24.x
+              uses: actions/setup-node@v6
               with:
-                  node-version: 20.x
+                  node-version: 24.x
 
             - name: Install Dependencies
               run: npm ci
@@ -43,14 +43,14 @@ jobs:
 
         strategy:
             matrix:
-                node-version: [20.x]
+                node-version: [24.x]
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Use Node.js ${{ matrix.node-version }}
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: ${{ matrix.node-version }}
 
@@ -71,15 +71,15 @@ jobs:
         runs-on: ${{ matrix.os }}
         strategy:
             matrix:
-                node-version: [18.x, 20.x, 22.x, 24.x]
+                node-version: [24.x]
                 os: [ubuntu-latest, windows-latest, macos-latest]
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Use Node.js ${{ matrix.node-version }}
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: ${{ matrix.node-version }}
 
@@ -109,14 +109,14 @@ jobs:
         runs-on: ubuntu-latest
         strategy:
             matrix:
-                node-version: [20.x]
+                node-version: [24.x]
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Use Node.js ${{ matrix.node-version }}
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: ${{ matrix.node-version }}
 

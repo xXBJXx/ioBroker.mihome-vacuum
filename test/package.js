@@ -15,12 +15,13 @@ describe('Runtime dependencies', () => {
         assert.equal(packageJson.dependencies.qs, '6.15.3');
     });
 
-    it('declares the documented Node.js and js-controller minimum versions', () => {
+    it('declares the documented Node.js, js-controller, and Admin minimum versions', () => {
         const packageJson = require('../package.json');
         const ioPackage = require('../io-package.json');
 
-        assert.equal(packageJson.engines.node, '>=18');
-        assert.equal(ioPackage.common.dependencies[0]['js-controller'], '>=5.0.19');
+        assert.equal(packageJson.engines.node, '>=24');
+        assert.equal(ioPackage.common.dependencies[0]['js-controller'], '>=7.2.2');
+        assert.equal(ioPackage.common.globalDependencies[0].admin, '>=7.9.13');
     });
 
     it('excludes source-level tests from the runtime package', () => {
@@ -36,6 +37,18 @@ describe('Runtime dependencies', () => {
         assert.match(workflow, /^              run: npm run test:js$/m);
         const regressionJob = workflow.slice(workflow.indexOf('    regression-tests:'), workflow.indexOf('    check-and-lint:'));
         assert.doesNotMatch(regressionJob, /^        needs:/m);
+    });
+
+    it('runs every CI job on the supported Node.js baseline', () => {
+        const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'test-and-release.yml'), 'utf8');
+
+        assert.match(workflow, /node-version: 24\.x/);
+        assert.match(workflow, /node-version: \[24\.x\]/);
+        assert.doesNotMatch(workflow, /node-version: (?:18|20|22)\.x/);
+        assert.doesNotMatch(workflow, /node-version: \[[^\]]*(?:18|20|22)\.x/);
+        assert.equal([...workflow.matchAll(/actions\/checkout@v6/g)].length, 4);
+        assert.equal([...workflow.matchAll(/actions\/setup-node@v6/g)].length, 4);
+        assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v[1-5]/);
     });
 
     it('ships only the declared Materialize configuration page', () => {

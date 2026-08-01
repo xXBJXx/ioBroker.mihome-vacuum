@@ -13,7 +13,7 @@
 
 This adapter allows you to control the Xiaomi vacuum cleaner.
 
-Benötigt Node.js 18 oder neuer und js-controller 5.0.19 oder neuer.
+Benötigt Node.js 24 oder neuer, js-controller 7.2.2 oder neuer und Admin 7.9.13 oder neuer.
 
 **This adapter uses Sentry libraries to automatically report exceptions and code errors to the developers.** For more details and for information how to disable the error reporting see [Sentry-Plugin Documentation](https://github.com/ioBroker/plugin-sentry#plugin-sentry)! Sentry reporting is used starting with js-controller 3.0.
 
