@@ -76,6 +76,7 @@ describe('Runtime dependencies', () => {
         assert.equal(buildConfig.compilerOptions.noEmit, false);
         assert.equal(packageJson.files.some(entry => entry === 'build/' || entry === 'src/'), false);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'tools.ts')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'stockCommands.ts')), true);
     });
 
     it('runs JavaScript regression tests in CI independently from linting', () => {
