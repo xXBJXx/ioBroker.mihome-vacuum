@@ -253,7 +253,7 @@ describe('Miio request lifecycle', () => {
         assert.deepEqual(await response, { id: 1, result: ['ok'] });
         await clock.tickAsync(3000);
 
-        assert.equal(fixture.socket.listenerCount('message'), 0);
+        assert.equal(fixture.socket.listenerCount('message'), 1);
         assert.equal(fixture.logs.debug.some(message => message.includes('timed out')), false);
         assert.equal(fixture.logs.debug.some(message => message.includes('PRIVATE_PAYLOAD_MARKER')), false);
     });
@@ -282,7 +282,7 @@ describe('Miio request lifecycle', () => {
         fixture.socket.sendError = new Error('synthetic send failure');
 
         await assert.rejects(fixture.client.sendMessage('get_status'), { code: 'MIIO_SEND_FAILED' });
-        assert.equal(fixture.socket.listenerCount('message'), 0);
+        assert.equal(fixture.socket.listenerCount('message'), 1);
     });
 
     it('rejects an invalid response without exposing its contents', async () => {
@@ -301,6 +301,23 @@ describe('Miio request lifecycle', () => {
         });
     });
 
+    it('settles every pending request when a response has no request ID', async () => {
+        const fixture = createClient();
+        fixture.client.packet.getPlainData = () => 'null';
+        const firstRejection = assert.rejects(fixture.client.sendMessage('get_status'), {
+            code: 'MIIO_INVALID_RESPONSE',
+        });
+        const secondRejection = assert.rejects(fixture.client.sendMessage('get_sound_volume'), {
+            code: 'MIIO_INVALID_RESPONSE',
+        });
+
+        fixture.socket.emit('message', Buffer.alloc(33), { port: 54321 });
+
+        await Promise.all([firstRejection, secondRejection]);
+        assert.equal(fixture.client.pendingRequests.size, 0);
+        assert.equal(fixture.socket.listenerCount('message'), 1);
+    });
+
     it('times out once with safe request context', async () => {
         const fixture = createClient();
         const response = fixture.client.sendMessage('get_status');
@@ -315,7 +332,7 @@ describe('Miio request lifecycle', () => {
             ),
             true,
         );
-        assert.equal(fixture.socket.listenerCount('message'), 0);
+        assert.equal(fixture.socket.listenerCount('message'), 1);
     });
 
     it('moves the next request ID beyond a retained device replay window', async () => {
@@ -341,7 +358,7 @@ describe('Miio request lifecycle', () => {
         await rejection;
         fixture.answer(1, ['late']);
 
-        assert.equal(fixture.socket.listenerCount('message'), 0);
+        assert.equal(fixture.socket.listenerCount('message'), 1);
         assert.deepEqual(fixture.connectionStates, []);
     });
 
@@ -349,6 +366,7 @@ describe('Miio request lifecycle', () => {
         const fixture = createClient();
         const first = fixture.client.sendMessage('get_status');
         const second = fixture.client.sendMessage('get_sound_volume');
+        assert.equal(fixture.socket.listenerCount('message'), 1);
         let firstSettled = false;
         first.then(() => (firstSettled = true));
 
@@ -359,7 +377,7 @@ describe('Miio request lifecycle', () => {
 
         fixture.answer(1, ['first']);
         assert.deepEqual(await first, { id: 1, result: ['first'] });
-        assert.equal(fixture.socket.listenerCount('message'), 0);
+        assert.equal(fixture.socket.listenerCount('message'), 1);
     });
 
     it('settles and removes the listener on shutdown during a request', async () => {
@@ -375,7 +393,7 @@ describe('Miio request lifecycle', () => {
         await clock.tickAsync(3000);
 
         await rejection;
-        assert.equal(fixture.socket.listenerCount('message'), 0);
+        assert.equal(fixture.socket.listenerCount('message'), 1);
         assert.equal(fixture.logs.debug.some(message => message.includes('timed out')), false);
     });
 
@@ -419,7 +437,7 @@ describe('Miio request lifecycle', () => {
         fixture.socket.emit('error', new Error('synthetic UDP failure'));
 
         await rejection;
-        assert.equal(fixture.socket.listenerCount('message'), 0);
+        assert.equal(fixture.socket.listenerCount('message'), 1);
         assert.equal(fixture.socket.closeCalls, 1);
     });
 });
