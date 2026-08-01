@@ -81,6 +81,7 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'RRMapParser.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'timerManager.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'roomManager.ts')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'miio.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'miio.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'rrMap.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'timer.ts')), true);

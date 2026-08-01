@@ -38,7 +38,11 @@ class FakeSocket extends EventEmitter {
     }
 }
 
-function createClient() {
+/**
+ * @param {string} [modulePath]
+ * @param {number | string} [port]
+ */
+function createClient(modulePath = '../lib/miio', port = 54321) {
     const socket = new FakeSocket();
     const connectionStates = [];
     /** @type {Record<string, string[]>} */
@@ -46,7 +50,7 @@ function createClient() {
     const adapter = {
         config: {
             ownPort: 53421,
-            port: 54321,
+            port,
             ip: 'test-host',
             token: '00000000000000000000000000000000',
         },
@@ -55,7 +59,7 @@ function createClient() {
         ),
         setConnection: connected => connectionStates.push(connected),
     };
-    const Miio = proxyquire('../lib/miio', {
+    const Miio = proxyquire(modulePath, {
         dgram: {
             createSocket: () => socket,
         },
@@ -75,9 +79,25 @@ function createClient() {
         logs,
         answer(id, result = ['ok']) {
             answer = { id, result };
-            socket.emit('message', Buffer.alloc(33), { port: 54321 });
+            socket.emit('message', Buffer.alloc(33), { port: Number(port) });
         },
     };
+}
+
+function createPacketClient(modulePath) {
+    const socket = new FakeSocket();
+    const Miio = proxyquire(modulePath, { dgram: { createSocket: () => socket } });
+    const client = new Miio({
+        config: {
+            ownPort: 53421,
+            port: 54321,
+            ip: 'test-host',
+            token: '00000000000000000000000000000000',
+        },
+        log: { debug() {}, info() {}, warn() {}, error() {} },
+        setConnection() {},
+    });
+    return { client, socket };
 }
 
 describe('Miio lifecycle', () => {
@@ -439,5 +459,96 @@ describe('Miio request lifecycle', () => {
         await rejection;
         assert.equal(fixture.socket.listenerCount('message'), 1);
         assert.equal(fixture.socket.closeCalls, 1);
+    });
+});
+
+describe('Miio TypeScript migration', () => {
+    const typedModule = '../build/lib/miio';
+
+    it('preserves every request JSON shape', () => {
+        const legacy = createPacketClient('../lib/miio');
+        const typed = createPacketClient(typedModule);
+        const cases = [
+            ['get_status', undefined],
+            ['app_segment_clean', [16, 17]],
+            ['app_zoned_clean', ['[[1,2,3,4]]']],
+            ['set_custom_mode', ''],
+            ['', ['ignored']],
+        ];
+
+        try {
+            for (const [method, params] of cases) {
+                assert.equal(typed.client._buildMsg(method, params, 7), legacy.client._buildMsg(method, params, 7));
+            }
+        } finally {
+            legacy.client.close();
+            typed.client.close();
+        }
+    });
+
+    it('preserves encrypted request and decrypted response bytes', () => {
+        const legacy = createPacketClient('../lib/miio');
+        const typed = createPacketClient(typedModule);
+        const clock = sinon.useFakeTimers({ now: 1700000000000 });
+        const plain = JSON.stringify({ id: 7, method: 'get_status', params: [] });
+
+        try {
+            const legacyRaw = legacy.client.packet.getRaw_fast(plain);
+            const typedRaw = typed.client.packet.getRaw_fast(plain);
+
+            assert.deepEqual(typedRaw, legacyRaw);
+            typed.client.packet.setRaw(typedRaw);
+            legacy.client.packet.setRaw(legacyRaw);
+            assert.equal(typed.client.packet.getPlainData(), legacy.client.packet.getPlainData());
+        } finally {
+            clock.restore();
+            legacy.client.close();
+            typed.client.close();
+        }
+    });
+
+    it('preserves timeout recovery and the next successful request ID', async () => {
+        const clock = sinon.useFakeTimers({ now: 1000 });
+        const legacy = createClient('../lib/miio');
+        const typed = createClient(typedModule);
+
+        try {
+            const legacyFirst = assert.rejects(legacy.client.sendMessage('get_status'), { code: 'MIIO_TIMEOUT' });
+            const typedFirst = assert.rejects(typed.client.sendMessage('get_status'), { code: 'MIIO_TIMEOUT' });
+            await clock.tickAsync(2000);
+            await Promise.all([legacyFirst, typedFirst]);
+
+            const legacySecond = legacy.client.sendMessage('get_status');
+            const typedSecond = typed.client.sendMessage('get_status');
+            legacy.answer(102);
+            typed.answer(102);
+
+            assert.deepEqual(await typedSecond, await legacySecond);
+            assert.equal(typed.client.pendingRequests.size, legacy.client.pendingRequests.size);
+            assert.deepEqual(typed.connectionStates, legacy.connectionStates);
+            assert.deepEqual(typed.logs, legacy.logs);
+        } finally {
+            legacy.client.close();
+            typed.client.close();
+            clock.restore();
+        }
+    });
+
+    it('preserves string-valued port configuration', async () => {
+        const legacy = createClient('../lib/miio', '54321');
+        const typed = createClient(typedModule, '54321');
+
+        try {
+            const legacyResponse = legacy.client.sendMessage('get_status');
+            const typedResponse = typed.client.sendMessage('get_status');
+            legacy.answer(1);
+            typed.answer(1);
+
+            assert.deepEqual(await typedResponse, await legacyResponse);
+            assert.deepEqual(typed.connectionStates, legacy.connectionStates);
+        } finally {
+            legacy.client.close();
+            typed.client.close();
+        }
     });
 });
