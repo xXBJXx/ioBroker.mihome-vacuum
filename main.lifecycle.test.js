@@ -20,6 +20,7 @@ class FakeAdapter extends EventEmitter {
     }
 
     async setObjectNotExistsAsync() {}
+    async extendObjectAsync() {}
     async delObjectAsync() {}
     async getStateAsync() {
         return null;
@@ -377,6 +378,19 @@ describe('Adapter unload lifecycle', () => {
         await startup;
         assert.deepEqual(delayedIds.sort(), ['control.X_send_command', 'control.pauseResume']);
         assert.equal(startupCompleted, true);
+        await adapter.onUnload(() => undefined);
+    });
+
+    it('repairs the numeric wifi-signal default on existing objects', async () => {
+        const { adapter } = createAdapter();
+        const updates = [];
+        adapter.extendObjectAsync = async (id, update) => {
+            updates.push({ id, update });
+        };
+
+        await adapter.main();
+
+        assert.deepEqual(updates, [{ id: 'deviceInfo.wifi_signal', update: { common: { def: 0 } } }]);
         await adapter.onUnload(() => undefined);
     });
 

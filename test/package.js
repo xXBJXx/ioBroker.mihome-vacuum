@@ -36,6 +36,28 @@ describe('Runtime dependencies', () => {
         assert.equal(ioPackage.common.globalDependencies[0].admin, '>=7.9.13');
     });
 
+    it('uses defaults matching every declared object value type', () => {
+        const objectDefinitions = require('../lib/objects');
+        const mismatches = [];
+        const visit = (value, path = 'objects') => {
+            if (!value || typeof value !== 'object') {
+                return;
+            }
+            if (value.common && value.common.type && Object.prototype.hasOwnProperty.call(value.common, 'def')) {
+                if (typeof value.common.def !== value.common.type) {
+                    mismatches.push(`${path}: ${value.common.type} != ${typeof value.common.def}`);
+                }
+            }
+            for (const [key, child] of Object.entries(value)) {
+                visit(child, `${path}.${key}`);
+            }
+        };
+
+        visit(objectDefinitions);
+
+        assert.deepEqual(mismatches, []);
+    });
+
     it('excludes source-level tests from the runtime package', () => {
         const packageJson = require('../package.json');
 

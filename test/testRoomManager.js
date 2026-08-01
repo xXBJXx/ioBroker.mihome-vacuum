@@ -2,6 +2,43 @@ const assert = require('node:assert/strict');
 const RoomManager = require('../lib/roomManager');
 
 describe('RoomManager object lookup', () => {
+    it('normalizes persisted full room IDs and creates the state object before writing it', async () => {
+        const operations = [];
+        const adapter = {
+            namespace: 'mihome-vacuum.test',
+            log: { warn: () => undefined },
+            setObject: () => undefined,
+            getStates: (_pattern, callback) =>
+                callback(null, { 'mihome-vacuum.test.rooms.room17.mapIndex': { val: 17 } }),
+            async setObjectNotExistsAsync(id) {
+                operations.push(`object:${id}`);
+            },
+            async setStateAsync(id) {
+                operations.push(`state:${id}`);
+            },
+            async getObjectAsync() {
+                return null;
+            },
+        };
+
+        new RoomManager(adapter, {
+            cleanRoom: 'Clean room',
+            cleanRooms: 'Clean rooms',
+            loadRooms: 'Load rooms',
+            cleanMultiRooms: 'Clean multiple rooms',
+            addRoom: 'Add room',
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(operations.includes('object:rooms.room17.state'), true);
+        assert.equal(operations.includes('state:rooms.room17.state'), true);
+        assert.equal(
+            operations.indexOf('object:rooms.room17.state') < operations.indexOf('state:rooms.room17.state'),
+            true,
+        );
+        assert.equal(operations.some(operation => operation.includes('mihome-vacuum.test.rooms.room17')), false);
+    });
+
     it('creates room channels through the supported object API', async () => {
         const objects = new Map();
         const states = new Map();
@@ -25,7 +62,9 @@ describe('RoomManager object lookup', () => {
             addRoom: 'Add room',
         });
         const updatedRooms = [];
-        manager.updateRoomStates = id => updatedRooms.push(id);
+        manager.updateRoomStates = async id => {
+            updatedRooms.push(id);
+        };
 
         await manager.createRoom('living', 16);
 

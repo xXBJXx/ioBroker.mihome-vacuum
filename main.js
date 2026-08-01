@@ -62,6 +62,9 @@ class MihomeVacuum extends utils.Adapter {
             objects.deviceInfo.map(async o => {
                 const objectId = `deviceInfo${o._id ? `.${o._id}` : ''}`;
                 await this.setObjectNotExistsAsync(objectId, o);
+                if (o._id === 'wifi_signal') {
+                    await this.extendObjectAsync(objectId, { common: { def: 0 } });
+                }
                 this.log.debug(`Creating ${o.type === 'channel' ? 'channel' : 'state'}: ${objectId}`);
             }),
         );
