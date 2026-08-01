@@ -250,4 +250,67 @@ describe('Adapter unload lifecycle', () => {
         assert.equal(adapter.debugMessages.includes('miIO.info response received'), false);
         await adapter.onUnload(() => undefined);
     });
+
+    it('waits for custom command and IoT state creation before startup completes', async () => {
+        const { adapter } = createAdapter();
+        adapter.config.enableSelfCommands = true;
+        adapter.config.enableAlexa = true;
+        const delayedIds = [];
+        /** @type {() => void} */
+        let releaseWrites = () => undefined;
+        const writeGate = new Promise(resolve => {
+            releaseWrites = () => resolve(undefined);
+        });
+        adapter.setObjectNotExistsAsync = async id => {
+            if (id === 'control.X_send_command' || id === 'control.pauseResume') {
+                delayedIds.push(id);
+                await writeGate;
+            }
+        };
+
+        let startupCompleted = false;
+        const startup = adapter.main().then(() => {
+            startupCompleted = true;
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.deepEqual(delayedIds, ['control.X_send_command']);
+        assert.equal(startupCompleted, false);
+
+        releaseWrites();
+        await startup;
+        assert.deepEqual(delayedIds.sort(), ['control.X_send_command', 'control.pauseResume']);
+        assert.equal(startupCompleted, true);
+        await adapter.onUnload(() => undefined);
+    });
+
+    it('waits for optional state cleanup without deleting the shared control channel', async () => {
+        const { adapter } = createAdapter();
+        const deletedIds = [];
+        /** @type {() => void} */
+        let releaseDeletes = () => undefined;
+        const deleteGate = new Promise(resolve => {
+            releaseDeletes = () => resolve(undefined);
+        });
+        adapter.delObjectAsync = async id => {
+            deletedIds.push(id);
+            await deleteGate;
+        };
+
+        let startupCompleted = false;
+        const startup = adapter.main().then(() => {
+            startupCompleted = true;
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(deletedIds.includes('control'), false);
+        assert.equal(deletedIds.includes('control.X_send_command'), true);
+        assert.equal(startupCompleted, false);
+
+        releaseDeletes();
+        await startup;
+        assert.equal(deletedIds.includes('control.pauseResume'), true);
+        assert.equal(startupCompleted, true);
+        await adapter.onUnload(() => undefined);
+    });
 });

@@ -86,11 +86,11 @@ class MihomeVacuum extends utils.Adapter {
         //check if Self send Commands is enabled
         // @ts-expect-error var not defined
         if (this.config.enableSelfCommands) {
-            objects.customCommands.map(
-                async o => await this.setObjectNotExistsAsync(`control${o._id ? `.${o._id}` : ''}`, o),
+            await Promise.all(
+                objects.customCommands.map(o => this.setObjectNotExistsAsync(`control${o._id ? `.${o._id}` : ''}`, o)),
             );
         } else {
-            objects.customCommands.map(o => this.delObj(`control${o._id ? `.${o.id}` : ''}`));
+            await Promise.all(objects.customCommands.filter(o => o._id).map(o => this.delObj(`control.${o._id}`)));
         }
 
         // clean_home is updated by VacuumManager for every supported robot. It must exist
@@ -101,10 +101,14 @@ class MihomeVacuum extends utils.Adapter {
         // @ts-expect-error var not defined
         if (this.config.enableAlexa) {
             this.log.debug('IoT integration enabled; creating additional states');
-            objects.iotState.slice(1).map(o => this.setObjectNotExistsAsync(`control${o._id ? `.${o._id}` : ''}`, o));
+            await Promise.all(
+                objects.iotState
+                    .slice(1)
+                    .map(o => this.setObjectNotExistsAsync(`control${o._id ? `.${o._id}` : ''}`, o)),
+            );
         } else {
             this.log.debug('IoT integration disabled; removing additional states');
-            objects.iotState.slice(1).map(async o => await this.delObj(`control${o._id ? `.${o._id}` : ''}`));
+            await Promise.all(objects.iotState.slice(1).map(o => this.delObj(`control${o._id ? `.${o._id}` : ''}`)));
         }
 
         this.getStateAsync('deviceInfo.unsupported').then(obj => {
