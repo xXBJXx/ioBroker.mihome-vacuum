@@ -85,6 +85,7 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'maphelper.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'XiaomiCloudCrypto.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'XiaomiCloudSession.ts')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'XiaomiCloudProtocol.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'miio.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'rrMap.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'timer.ts')), true);
@@ -93,6 +94,7 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'xiaomiCloud.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudCrypto.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudSession.js')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudProtocol.js')), true);
     });
 
     it('runs JavaScript regression tests in CI independently from linting', () => {
