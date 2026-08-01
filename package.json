@@ -24,7 +24,8 @@
     "url": "https://github.com/iobroker-community-adapters/ioBroker.mihome-vacuum"
   },
   "scripts": {
-    "test:js": "mocha --config test/mocha.custom.json \"{!(node_modules|test)/**/*.test.js,*.test.js,test/**/test!(PackageFiles|Startup).js}\"",
+    "build:backend": "tsc -p tsconfig.build.json",
+    "test:js": "npm run build:backend && mocha --config test/mocha.custom.json \"{!(node_modules|test)/**/*.test.js,*.test.js,test/**/test!(PackageFiles|Startup).js}\"",
     "test:package": "mocha test/package --exit",
     "test:unit": "mocha test/unit --exit",
     "test:integration": "mocha test/integration --exit",

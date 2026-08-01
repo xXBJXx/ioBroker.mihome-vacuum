@@ -64,6 +64,20 @@ describe('Runtime dependencies', () => {
         assert.equal(packageJson.files.includes('!lib/**/*.test.js'), true);
     });
 
+    it('builds the TypeScript backend candidate without switching the runtime entry', () => {
+        const packageJson = require('../package.json');
+        const buildConfig = require('../tsconfig.build.json');
+
+        assert.equal(packageJson.main, 'main.js');
+        assert.equal(packageJson.scripts['build:backend'], 'tsc -p tsconfig.build.json');
+        assert.match(packageJson.scripts['test:js'], /^npm run build:backend && mocha /);
+        assert.equal(buildConfig.compilerOptions.rootDir, 'src');
+        assert.equal(buildConfig.compilerOptions.outDir, 'build');
+        assert.equal(buildConfig.compilerOptions.noEmit, false);
+        assert.equal(packageJson.files.some(entry => entry === 'build/' || entry === 'src/'), false);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'tools.ts')), true);
+    });
+
     it('runs JavaScript regression tests in CI independently from linting', () => {
         const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'test-and-release.yml'), 'utf8');
 
