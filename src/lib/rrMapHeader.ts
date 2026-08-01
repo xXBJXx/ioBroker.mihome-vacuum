@@ -6,8 +6,8 @@ import type { RRMapHeader } from '../types/rrMap';
  * @param mapBuffer Buffer containing an RR map.
  * @returns Parsed header fields or an empty object for a non-RR buffer.
  */
-export function parseRRMapHeader(mapBuffer: Buffer): Partial<RRMapHeader> {
-    if (mapBuffer[0x00] !== 0x72 || mapBuffer[0x01] !== 0x72) {
+export function parseRRMapHeader(mapBuffer: Buffer | null | undefined): Partial<RRMapHeader> {
+    if (!mapBuffer || mapBuffer[0x00] !== 0x72 || mapBuffer[0x01] !== 0x72) {
         return {};
     }
 
