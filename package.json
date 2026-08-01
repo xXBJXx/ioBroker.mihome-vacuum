@@ -29,7 +29,8 @@
     "check": "tsc --noEmit -p tsconfig.check.json",
     "lint": "eslint -c eslint.config.mjs .",
     "translate": "gulp translateAndUpdateWordsJS",
-    "release": "release-script"
+    "release": "release-script",
+    "dev-server": "dev-server"
   },
   "files": [
     "admin{,/!(src)/**}/!(tsconfig|tsconfig.*).json",
@@ -43,12 +44,9 @@
   "optionalDependencies": {
     "canvas": "^3.1.2"
   },
-  "engines": {
-    "node": ">=18"
-  },
   "dependencies": {
-    "@iobroker/adapter-core": "^3.2.3",
-    "qs": "^6.14.0"
+    "@iobroker/adapter-core": "^3.4.3",
+    "qs": "6.15.2"
   },
   "devDependencies": {
     "@alcalzone/release-script": "^3.8.0",

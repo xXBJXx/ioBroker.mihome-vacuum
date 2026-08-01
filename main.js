@@ -89,14 +89,18 @@ class MihomeVacuum extends utils.Adapter {
             objects.customCommands.map(o => this.delObj(`control${o._id ? `.${o.id}` : ''}`));
         }
 
-        //check if iotState is enabled
+        // clean_home is updated by VacuumManager for every supported robot. It must exist
+        // independently of the optional Alexa/IOT integration.
+        await this.setObjectNotExistsAsync('control.clean_home', objects.iotState[0]);
+
+        // check if additional iot states are enabled
         // @ts-expect-error var not defined
         if (this.config.enableAlexa) {
             this.log.info('IOT enabled, create state');
-            objects.iotState.map(o => this.setObjectNotExistsAsync(`control${o._id ? `.${o._id}` : ''}`, o));
+            objects.iotState.slice(1).map(o => this.setObjectNotExistsAsync(`control${o._id ? `.${o._id}` : ''}`, o));
         } else {
             this.log.info('IOT disabled, delete state');
-            objects.iotState.map(async o => await this.delObj(`control${o._id ? `.${o.id}` : ''}`));
+            objects.iotState.slice(1).map(async o => await this.delObj(`control${o._id ? `.${o._id}` : ''}`));
         }
 
         this.getStateAsync('deviceInfo.unsupported').then(obj => {
@@ -145,19 +149,16 @@ class MihomeVacuum extends utils.Adapter {
             }
         }
         if (!DeviceData) {
-            this.log.error(
-                'YOUR DEVICE IS CONNECTED BUT DID NOT ANSWER YET - CONNECTION CAN TAKE UP TO 10 MINUTES - PLEASE BE PATIENT AND DO NOT TURN THE ADAPTER OFF',
-            );
             //try to get from Config
             // @ts-expect-error var not defined
             DeviceModel = this.config.model;
             if (DeviceModel) {
-                this.log.warn('No Answer for DeviceModel use model from Config');
+                this.log.warn('Device information did not answer during startup; using the configured model');
             } else {
                 const objModel = await this.getStateAsync('deviceInfo.model');
                 if (objModel && objModel.val) {
                     DeviceModel = objModel.val;
-                    this.log.warn('No Answer for DeviceModel use old one');
+                    this.log.warn('Device information did not answer during startup; using the stored model');
                 }
             }
         }
@@ -348,6 +349,79 @@ class MihomeVacuum extends utils.Adapter {
         await this.setStateAsync('auth.status', 'not_authenticated', true);
     }
 
+    async getTimersForAdmin() {
+        const [objects, states, roomObjects] = await Promise.all([
+            this.getAdapterObjectsAsync(),
+            this.getStatesAsync('timer.*'),
+            this.getForeignObjectsAsync('enum.rooms.*'),
+        ]);
+        const prefix = `${this.namespace}.timer.`;
+        const rooms = Object.values(roomObjects || {}).map(room => ({
+            id: room._id,
+            name: room.common.name,
+            members: room.common.members || [],
+        }));
+        const channels = Object.values(objects)
+            .filter(object => object.type === 'channel' && object._id.startsWith(`${this.namespace}.rooms.`))
+            .map(channel => ({ id: channel._id.split('.').pop(), name: channel.common.name }));
+        const timers = Object.values(objects)
+            .filter(object => object.type === 'state' && object._id.startsWith(prefix))
+            .map(object => {
+                const name = object._id.slice(prefix.length);
+                const [days = '', hour = '0', minute = '0'] = name.split('_');
+                return {
+                    id: name,
+                    enabled: states[object._id]?.val !== -1,
+                    day: days.split('').filter(day => /^[0-6]$/.test(day)),
+                    hour: Number(hour),
+                    minute: Number(minute),
+                    channels: object.native.channels || [],
+                    rooms: rooms.filter(room => room.members.includes(object._id)).map(room => room.id),
+                };
+            });
+        return { timers, rooms: rooms.map(({ id, name }) => ({ id, name })), channels };
+    }
+
+    async saveTimersFromAdmin(timers) {
+        if (!Array.isArray(timers)) throw new Error('Timers must be an array');
+        const normalized = new Map();
+        for (const timer of timers) {
+            const days = [...new Set((timer.day || []).map(String).filter(day => /^[0-6]$/.test(day)))].sort().join('');
+            const hour = Number(timer.hour);
+            const minute = Number(timer.minute);
+            if (!days || !Number.isInteger(hour) || hour < 0 || hour > 23 || !Number.isInteger(minute) || minute < 0 || minute > 59) {
+                throw new Error('Invalid timer definition');
+            }
+            const id = `${days}_${String(hour).padStart(2, '0')}_${String(minute).padStart(2, '0')}`;
+            if (normalized.has(id)) throw new Error('Two timers cannot have the same start time');
+            normalized.set(id, { enabled: !!timer.enabled, channels: Array.isArray(timer.channels) ? timer.channels : [], rooms: Array.isArray(timer.rooms) ? timer.rooms : [] });
+        }
+        const existing = await this.getAdapterObjectsAsync();
+        const prefix = `${this.namespace}.timer.`;
+        for (const object of Object.values(existing)) {
+            if (object.type === 'state' && object._id.startsWith(prefix) && !normalized.has(object._id.slice(prefix.length))) {
+                await this.delObjectAsync(object._id);
+            }
+        }
+        for (const [id, timer] of normalized) {
+            const stateId = `timer.${id}`;
+            await this.extendObjectAsync(stateId, {
+                type: 'state',
+                common: { name: id, type: 'number', role: 'value', read: true, write: true, min: -1, max: 2, states: { '1': 'enabled', '-1': 'disabled', '0': 'skip', '2': 'start now' } },
+                native: { channels: timer.channels, nextProcessTime: 0 },
+            });
+            await this.setStateAsync(stateId, timer.enabled ? 1 : -1, false);
+        }
+        const roomObjects = await this.getForeignObjectsAsync('enum.rooms.*');
+        for (const room of Object.values(roomObjects || {})) {
+            const members = (room.common.members || []).filter(member => !member.startsWith(prefix));
+            for (const [id, timer] of normalized) if (timer.rooms.includes(room._id)) members.push(`${prefix}${id}`);
+            room.common.members = [...new Set(members)];
+            await this.setForeignObjectAsync(room._id, room);
+        }
+        return this.getTimersForAdmin();
+    }
+
     /**
      * Is called when adapter shuts down - callback has to be called under any circumstances!
      *
@@ -471,7 +545,9 @@ class MihomeVacuum extends utils.Adapter {
                         try {
                             respond(await XiaomiApi.getDevices(obj.message.server));
                         } catch (error) {
-                            respond({ err: error instanceof Error ? error.message : 'Could not retrieve Xiaomi devices' });
+                            respond({
+                                err: error instanceof Error ? error.message : 'Could not retrieve Xiaomi devices',
+                            });
                         }
                     } else {
                         respond(result);
@@ -480,10 +556,29 @@ class MihomeVacuum extends utils.Adapter {
                 }
 
                 case 'startCloudLogin': {
-                    if (!XiaomiApi) XiaomiApi = new XiaomiCloudConnector(this.log, {}, this);
+                    if (!XiaomiApi) {
+                        XiaomiApi = new XiaomiCloudConnector(this.log, {}, this);
+                    }
+                    this.log.debug('Cloud auth: QR login start requested by admin');
                     respond(await XiaomiApi.startQrLogin());
                     return;
                 }
+
+                case 'getTimers':
+                    try {
+                        respond(await this.getTimersForAdmin());
+                    } catch (error) {
+                        respond({ err: error instanceof Error ? error.message : 'Could not load timers' });
+                    }
+                    return;
+
+                case 'saveTimers':
+                    try {
+                        respond(await this.saveTimersFromAdmin(obj.message?.timers));
+                    } catch (error) {
+                        respond({ err: error instanceof Error ? error.message : 'Could not save timers' });
+                    }
+                    return;
 
                 // ======================================================================
                 default:
