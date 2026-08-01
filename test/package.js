@@ -96,6 +96,10 @@ describe('Runtime dependencies', () => {
         assert.match(deployJob, /uses: ioBroker\/testing-action-deploy@v1/);
         assert.match(deployJob, /node-version: "24\.x"/);
         assert.match(deployJob, /package-cache: "false"/);
+        assert.match(
+            deployJob,
+            /github\.repository == 'iobroker-community-adapters\/ioBroker\.mihome-vacuum'/,
+        );
         assert.doesNotMatch(deployJob, /NPM_TOKEN|npm-token|::set-output|npm install|actions\/create-release/);
     });
 
