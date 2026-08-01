@@ -235,7 +235,7 @@ describe('MapHelper TypeScript migration', () => {
         });
         const TypedWithMocks = proxyquire('../build/lib/maphelper', {
             axios: { default: axiosStub, ...axiosStub },
-            '../../lib/XiaomiCloudConnector': FakeCloudConnector,
+            './XiaomiCloudConnector': FakeCloudConnector,
         });
         const legacyAdapter = createObservedAdapter({});
         const typedAdapter = createObservedAdapter({});

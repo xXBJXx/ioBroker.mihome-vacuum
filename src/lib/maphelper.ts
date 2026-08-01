@@ -2,10 +2,11 @@
 import axios from 'axios';
 import { createRequire } from 'node:module';
 import * as zlib from 'node:zlib';
-import XiaomiCloudConnector from '../../lib/XiaomiCloudConnector';
+import XiaomiCloudConnector from './XiaomiCloudConnector';
 import RRMapParser from './RRMapParser';
 import type { MapCreatorModule, MapHelperAdapter, MapHelperConfig, MapUrlResponse } from '../types/mapHelper';
 import type { RRMapData } from '../types/rrMap';
+import type { XiaomiCloudAdapter } from '../types/xiaomiCloudConnector';
 
 interface CloudConnector {
     loggedIn(): boolean;
@@ -81,7 +82,11 @@ class MapHelper {
             this.mapCreator = loadMapCreator();
             adapter.log.debug(`load Map creator... ${Boolean(this.mapCreator)}`);
         }
-        this.cloudConnector = new XiaomiCloudConnector(adapter.log, {}, adapter);
+        this.cloudConnector = new XiaomiCloudConnector(
+            adapter.log,
+            {},
+            adapter as MapHelperAdapter & XiaomiCloudAdapter,
+        );
     }
 
     getRawMapData(urlString?: string): Promise<unknown> {
