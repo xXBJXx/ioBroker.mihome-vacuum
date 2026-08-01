@@ -171,6 +171,39 @@ describe('Miio lifecycle', () => {
     });
 });
 
+describe('Miio packet encoding', () => {
+    it('preserves the encrypted byte contract and decrypts the packet payload', () => {
+        const socket = new FakeSocket();
+        const Miio = proxyquire('../lib/miio', { dgram: { createSocket: () => socket } });
+        const client = new Miio({
+            config: {
+                ownPort: 53421,
+                port: 54321,
+                ip: 'test-host',
+                token: '00000000000000000000000000000000',
+            },
+            log: { debug() {}, info() {}, warn() {}, error() {} },
+            setConnection() {},
+        });
+        const clock = sinon.useFakeTimers({ now: 1700000000000 });
+        const plain = JSON.stringify({ id: 7, method: 'get_status', params: [] });
+
+        try {
+            const raw = client.packet.getRaw_fast(plain);
+            assert.equal(
+                raw.toString('hex'),
+                '21310050ffffffffffffffff6553f100b65806b7ade2816ff5af438ba716224e91d54e6ed3d1920ae6f9e793ba9c463de223d43fd5773dcc870f7f19d95d95b44da109f937fa64eb46b20e41b55990d8',
+            );
+
+            client.packet.setRaw(raw);
+            assert.equal(client.packet.getPlainData(), plain);
+        } finally {
+            clock.restore();
+            client.close();
+        }
+    });
+});
+
 describe('Miio request lifecycle', () => {
     let clock;
 
