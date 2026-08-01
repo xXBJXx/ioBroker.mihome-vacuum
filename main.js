@@ -137,10 +137,14 @@ class MihomeVacuum extends utils.Adapter {
         return this.unsupportedFeatures.indexOf(`|${key}|`) >= 0;
     }
 
-    setUnsupportedFeature(key) {
+    async setUnsupportedFeature(key) {
         if (this.unsupportedFeatures.indexOf(`|${key}|`) == -1) {
             this.unsupportedFeatures += `${key}|`;
-            this.setStateAsync('deviceInfo.unsupported', this.unsupportedFeatures, true);
+            try {
+                await this.setStateAsync('deviceInfo.unsupported', this.unsupportedFeatures, true);
+            } catch {
+                this.log.warn('Could not persist a detected unsupported device feature');
+            }
         }
     }
 

@@ -440,4 +440,34 @@ describe('Adapter unload lifecycle', () => {
         assert.equal(adapter.isUnsupportedFeature('segemntCleanRepeat'), true);
         await adapter.onUnload(() => undefined);
     });
+
+    it('awaits unsupported-feature persistence and handles write failures safely', async () => {
+        const { adapter } = createAdapter();
+        /** @type {(error: Error) => void} */
+        let rejectWrite = () => undefined;
+        const writeGate = new Promise((_resolve, reject) => {
+            rejectWrite = reject;
+        });
+        adapter.setStateAsync = async id => {
+            if (id === 'deviceInfo.unsupported') {
+                return writeGate;
+            }
+        };
+
+        let persistenceCompleted = false;
+        const persistence = adapter.setUnsupportedFeature('segemntCleanRepeat').then(() => {
+            persistenceCompleted = true;
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(persistenceCompleted, false);
+
+        rejectWrite(new Error('SENSITIVE_UNSUPPORTED_WRITE_MARKER'));
+        await persistence;
+
+        assert.equal(persistenceCompleted, true);
+        assert.equal(adapter.unsupportedFeatures, '|segemntCleanRepeat|');
+        assert.equal(adapter.warnMessages.includes('Could not persist a detected unsupported device feature'), true);
+        assert.equal(adapter.warnMessages.join('\n').includes('SENSITIVE_UNSUPPORTED_WRITE_MARKER'), false);
+    });
 });
