@@ -80,9 +80,23 @@ describe('Runtime dependencies', () => {
         assert.match(workflow, /node-version: \[24\.x\]/);
         assert.doesNotMatch(workflow, /node-version: (?:18|20|22)\.x/);
         assert.doesNotMatch(workflow, /node-version: \[[^\]]*(?:18|20|22)\.x/);
-        assert.equal([...workflow.matchAll(/actions\/checkout@v6/g)].length, 4);
-        assert.equal([...workflow.matchAll(/actions\/setup-node@v6/g)].length, 4);
+        assert.equal([...workflow.matchAll(/actions\/checkout@v6/g)].length, 3);
+        assert.equal([...workflow.matchAll(/actions\/setup-node@v6/g)].length, 3);
         assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v[1-5]/);
+        assert.match(workflow, /- name: Type-check source code\s+run: npm run check/);
+    });
+
+    it('uses the official tokenless ioBroker release workflow', () => {
+        const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'test-and-release.yml'), 'utf8');
+        const deployJob = workflow.slice(workflow.indexOf('    deploy:'));
+
+        assert.match(deployJob, /needs: \[regression-tests, check-and-lint, adapter-tests\]/);
+        assert.match(deployJob, /contents: write/);
+        assert.match(deployJob, /id-token: write/);
+        assert.match(deployJob, /uses: ioBroker\/testing-action-deploy@v1/);
+        assert.match(deployJob, /node-version: "24\.x"/);
+        assert.match(deployJob, /package-cache: "false"/);
+        assert.doesNotMatch(deployJob, /NPM_TOKEN|npm-token|::set-output|npm install|actions\/create-release/);
     });
 
     it('ships only the declared Materialize configuration page', () => {
