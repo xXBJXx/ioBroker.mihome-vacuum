@@ -9,12 +9,13 @@ class FakeAdapter extends EventEmitter {
         this.namespace = 'mihome-vacuum.test';
         this.debugMessages = [];
         this.warnMessages = [];
+        this.errorMessages = [];
         this.sentMessages = [];
         this.log = {
             debug: message => this.debugMessages.push(String(message)),
             info: () => undefined,
             warn: message => this.warnMessages.push(String(message)),
-            error: () => undefined,
+            error: message => this.errorMessages.push(String(message)),
         };
     }
 
@@ -31,9 +32,9 @@ class FakeAdapter extends EventEmitter {
 }
 
 /**
- * @param {{ closeThrows?: boolean, managerCloseThrows?: boolean, modelResponses?: object[] }} [options]
+ * @param {{ closeThrows?: boolean, managerCloseThrows?: boolean, managerReadyRejects?: boolean, modelResponses?: object[] }} [options]
  */
-function createAdapter({ closeThrows = false, managerCloseThrows = false, modelResponses } = {}) {
+function createAdapter({ closeThrows = false, managerCloseThrows = false, managerReadyRejects = false, modelResponses } = {}) {
     const counters = {
         udpClose: 0,
         managerClose: 0,
@@ -59,6 +60,12 @@ function createAdapter({ closeThrows = false, managerCloseThrows = false, modelR
     }
 
     class FakeVacuumManager {
+        constructor() {
+            this.ready = managerReadyRejects
+                ? Promise.reject(new Error('SENSITIVE_MANAGER_INITIALIZATION_MARKER'))
+                : Promise.resolve();
+        }
+
         async close() {
             counters.managerClose++;
             if (managerCloseThrows) throw new Error('synthetic manager close failure');
@@ -248,6 +255,26 @@ describe('Adapter unload lifecycle', () => {
         assert.equal(adapter.debugMessages.includes('miIO.info attempt 1/5 completed without device information'), true);
         assert.equal(adapter.debugMessages.includes('miIO.info attempt 2/5 succeeded'), true);
         assert.equal(adapter.debugMessages.includes('miIO.info response received'), false);
+        await adapter.onUnload(() => undefined);
+    });
+
+    it('waits for manager initialization and cleans up a failed manager safely', async () => {
+        const { adapter, counters } = createAdapter({ managerReadyRejects: true });
+        const connectionValues = [];
+        adapter.setStateAsync = async (id, state) => {
+            if (id === 'info.connection') {
+                connectionValues.push(state.val);
+            }
+        };
+
+        await adapter.main();
+        await adapter.getModel();
+
+        assert.equal(adapter.vacuum, null);
+        assert.equal(counters.managerClose, 1);
+        assert.deepEqual(connectionValues, [true, false]);
+        assert.equal(adapter.errorMessages.includes('Could not initialize the selected vacuum manager'), true);
+        assert.equal(adapter.errorMessages.join('\n').includes('SENSITIVE_MANAGER_INITIALIZATION_MARKER'), false);
         await adapter.onUnload(() => undefined);
     });
 

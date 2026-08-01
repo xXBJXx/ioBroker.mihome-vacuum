@@ -29,6 +29,27 @@ async function waitForManager() {
 }
 
 describe('DreameManager status polling', () => {
+    it('handles a failed optional wash-base probe without exposing the failure', async () => {
+        const adapter = createAdapter();
+        let callCount = 0;
+        const manager = new DreameManager(adapter, {
+            sendMessage: async () => {
+                callCount++;
+                if (callCount === 1) {
+                    throw new Error('SENSITIVE_WASH_BASE_PROBE_MARKER');
+                }
+                return { result: [] };
+            },
+        });
+
+        await manager.ready;
+        await waitForManager();
+        await manager.close();
+
+        assert.equal(adapter.debugMessages.includes('Could not determine wash base availability'), true);
+        assert.equal(adapter.debugMessages.join('\n').includes('SENSITIVE_WASH_BASE_PROBE_MARKER'), false);
+    });
+
     it('does not log complete Dreame property responses', async () => {
         const adapter = createAdapter();
         let callCount = 0;

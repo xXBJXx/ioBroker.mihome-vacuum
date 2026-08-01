@@ -175,7 +175,22 @@ class MihomeVacuum extends utils.Adapter {
         //we get a model so we can select a protocol
         if (manager) {
             this.device = DeviceModel;
-            this.vacuum = new manager(this, this.miio);
+            const vacuum = new manager(this, this.miio);
+            this.vacuum = vacuum;
+            try {
+                await vacuum.ready;
+            } catch {
+                this.log.error('Could not initialize the selected vacuum manager');
+                try {
+                    await vacuum.close();
+                } catch {
+                    this.log.debug('Could not fully clean up the failed vacuum manager initialization');
+                }
+                if (this.vacuum === vacuum) {
+                    this.vacuum = null;
+                }
+                await this.setConnection(false);
+            }
         }
     }
 
