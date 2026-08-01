@@ -15,7 +15,6 @@ function createAdapter() {
             warn: () => undefined,
             error: () => undefined,
         },
-        async setObjectAsync() {},
         async setObjectNotExistsAsync() {},
         async setStateAsync(id, state) {
             states.set(id, state);
@@ -29,6 +28,43 @@ async function waitForManager() {
 }
 
 describe('DreameManager status polling', () => {
+    it('preserves existing object metadata while creating missing Dreame objects', async () => {
+        const adapter = createAdapter();
+        const storedObjects = new Map([
+            [
+                'control.start',
+                {
+                    type: 'state',
+                    common: { name: 'Custom start name', type: 'boolean', role: 'button' },
+                    native: { userDefined: true },
+                },
+            ],
+        ]);
+        adapter.setObjectNotExistsAsync = async (id, object) => {
+            if (!storedObjects.has(id)) {
+                storedObjects.set(id, object);
+            }
+        };
+        let callCount = 0;
+        const manager = new DreameManager(adapter, {
+            sendMessage: async () => {
+                callCount++;
+                return callCount === 1 ? { result: [{ code: -1 }] } : { result: [] };
+            },
+        });
+
+        await manager.ready;
+        await manager.close();
+
+        assert.deepEqual(storedObjects.get('control.start'), {
+            type: 'state',
+            common: { name: 'Custom start name', type: 'boolean', role: 'button' },
+            native: { userDefined: true },
+        });
+        assert.equal(storedObjects.has('info.battery'), true);
+        assert.equal(storedObjects.has('history.total_time'), true);
+    });
+
     it('handles a failed optional wash-base probe without exposing the failure', async () => {
         const adapter = createAdapter();
         let callCount = 0;
