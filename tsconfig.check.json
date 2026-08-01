@@ -1,7 +1,10 @@
 // Specialized tsconfig for type-checking js files
 {
 	"extends": "./tsconfig.json",
-	"compilerOptions": {},
+	"compilerOptions": {
+		"module": "Preserve",
+		"moduleResolution": "Bundler"
+	},
 	"include": [
 		"**/*.js",
 		"**/*.d.ts"

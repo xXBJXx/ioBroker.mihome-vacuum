@@ -15,6 +15,18 @@ describe('Runtime dependencies', () => {
         assert.equal(packageJson.dependencies.qs, '6.15.3');
     });
 
+    it('keeps the approved ioBroker and release toolchain on the current baseline', () => {
+        const packageJson = require('../package.json');
+
+        assert.equal(packageJson.dependencies['@iobroker/adapter-core'], '^3.4.3');
+        assert.equal(packageJson.devDependencies['@iobroker/testing'], '^5.3.0');
+        assert.equal(packageJson.devDependencies['@iobroker/eslint-config'], '^2.3.4');
+        assert.equal(packageJson.devDependencies['@alcalzone/release-script'], '^5.2.1');
+        assert.equal(packageJson.devDependencies['@alcalzone/release-script-plugin-iobroker'], '^5.2.0');
+        assert.equal(packageJson.devDependencies['@alcalzone/release-script-plugin-license'], '^5.2.2');
+        assert.equal(packageJson.devDependencies['@alcalzone/release-script-plugin-manual-review'], '^5.2.0');
+    });
+
     it('declares the documented Node.js, js-controller, and Admin minimum versions', () => {
         const packageJson = require('../package.json');
         const ioPackage = require('../io-package.json');
