@@ -142,6 +142,34 @@ describe('Miio lifecycle', () => {
         client.close();
     });
 
+    it('synchronizes the hello header before emitting the first connect event', () => {
+        const { client, socket } = createClient();
+        const helloPacket = Buffer.alloc(32);
+        helloPacket.writeUInt16BE(0x2131, 0);
+        helloPacket.writeUInt16BE(32, 2);
+        helloPacket.writeUInt32BE(0x01020304, 8);
+        helloPacket.writeUInt32BE(Math.floor(Date.now() / 1000), 12);
+        client.connected = null;
+        client.packet.setRaw = () => {
+            client.packet.serial = Buffer.from('01020304', 'hex');
+            client.packet.stamprec = Buffer.alloc(4);
+            client.packet.stamprec.writeUInt32BE(Math.floor(Date.now() / 1000));
+        };
+        let serialAtConnect;
+        let timeDifferenceAtConnect;
+        client.on('connect', () => {
+            serialAtConnect = client.packet.serial.toString('hex');
+            timeDifferenceAtConnect = client.packet.timediff;
+        });
+
+        client.__sendPing();
+        socket.emit('message', helloPacket, { port: 54321 });
+
+        assert.equal(serialAtConnect, '01020304');
+        assert.equal(timeDifferenceAtConnect, 0);
+        client.close();
+    });
+
     it('closes a failed UDP socket without terminating the process', () => {
         const exit = sinon.stub(process, 'exit');
         try {
@@ -288,6 +316,20 @@ describe('Miio request lifecycle', () => {
             true,
         );
         assert.equal(fixture.socket.listenerCount('message'), 0);
+    });
+
+    it('moves the next request ID beyond a retained device replay window', async () => {
+        const fixture = createClient();
+        const firstResponse = fixture.client.sendMessage('get_status');
+        const firstRejection = assert.rejects(firstResponse, { code: 'MIIO_TIMEOUT' });
+
+        await clock.tickAsync(2000);
+        await firstRejection;
+        const secondResponse = fixture.client.sendMessage('get_status');
+
+        fixture.answer(102);
+
+        assert.deepEqual(await secondResponse, { id: 102, result: ['ok'] });
     });
 
     it('ignores a late answer after timeout', async () => {
