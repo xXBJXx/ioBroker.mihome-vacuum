@@ -284,11 +284,20 @@ class MihomeVacuum extends utils.Adapter {
      * Is called when databases are connected and adapter received configuration.
      */
     async onReady() {
-        // Reset the connection indicator during startup
-        this.setConnection(false);
-        await this.ensureAuthStates();
-        this.xiaomiApi = new XiaomiCloudConnector(this.log, {}, this);
-        this.main();
+        try {
+            // Reset the connection indicator during startup
+            await this.setConnection(false);
+            await this.ensureAuthStates();
+            this.xiaomiApi = new XiaomiCloudConnector(this.log, {}, this);
+            await this.main();
+        } catch {
+            this.log.error('Adapter startup failed');
+            try {
+                await this.setConnection(false);
+            } catch {
+                this.log.debug('Could not reset the connection indicator after the startup failure');
+            }
+        }
     }
 
     async ensureAuthStates() {

@@ -258,6 +258,52 @@ describe('Adapter unload lifecycle', () => {
         await adapter.onUnload(() => undefined);
     });
 
+    it('waits for main startup work in the ready lifecycle', async () => {
+        const { adapter } = createAdapter();
+        /** @type {(state: null) => void} */
+        let releaseState = () => undefined;
+        const stateGate = new Promise(resolve => {
+            releaseState = resolve;
+        });
+        adapter.getStateAsync = async id => (id === 'deviceInfo.unsupported' ? stateGate : null);
+
+        let readyCompleted = false;
+        const ready = adapter.onReady().then(() => {
+            readyCompleted = true;
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(readyCompleted, false);
+
+        releaseState(null);
+        await ready;
+        assert.equal(readyCompleted, true);
+        await adapter.onUnload(() => undefined);
+    });
+
+    it('handles startup failures without exposing details and leaves the connection inactive', async () => {
+        const { adapter } = createAdapter();
+        const connectionValues = [];
+        adapter.setStateAsync = async (id, state) => {
+            if (id === 'info.connection') {
+                connectionValues.push(state.val);
+            }
+        };
+        adapter.setObjectNotExistsAsync = async id => {
+            if (id === 'auth') {
+                throw new Error('SENSITIVE_STARTUP_FAILURE_MARKER');
+            }
+        };
+
+        await adapter.onReady();
+
+        assert.equal(adapter.miio, null);
+        assert.deepEqual(connectionValues, [false, false]);
+        assert.equal(adapter.errorMessages.includes('Adapter startup failed'), true);
+        assert.equal(adapter.errorMessages.join('\n').includes('SENSITIVE_STARTUP_FAILURE_MARKER'), false);
+        await adapter.onUnload(() => undefined);
+    });
+
     it('waits for manager initialization and cleans up a failed manager safely', async () => {
         const { adapter, counters } = createAdapter({ managerReadyRejects: true });
         const connectionValues = [];
