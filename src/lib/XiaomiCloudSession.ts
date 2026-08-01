@@ -1,4 +1,4 @@
-import type { XiaomiCloudSession } from '../types/xiaomiCloud';
+import type { XiaomiCloudSession, XiaomiCloudSessionDecodeResult } from '../types/xiaomiCloud';
 
 export function isValidCloudSession(session: unknown): session is XiaomiCloudSession {
     if (!session || (typeof session !== 'object' && typeof session !== 'function')) {
@@ -18,4 +18,23 @@ export function isValidCloudSession(session: unknown): session is XiaomiCloudSes
         typeof candidate.location === 'string' &&
         candidate.location.startsWith('https://')
     );
+}
+
+export function decodeStoredCloudSession(
+    rawSession: unknown,
+    decrypt?: (serializedSession: string) => string,
+): XiaomiCloudSessionDecodeResult {
+    try {
+        let saved = rawSession;
+        if (typeof rawSession === 'string') {
+            try {
+                saved = JSON.parse(rawSession);
+            } catch {
+                saved = JSON.parse(decrypt ? decrypt(rawSession) : rawSession);
+            }
+        }
+        return isValidCloudSession(saved) ? { status: 'valid', session: saved } : { status: 'invalid_session' };
+    } catch {
+        return { status: 'invalid_json' };
+    }
 }

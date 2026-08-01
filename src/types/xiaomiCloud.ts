@@ -16,5 +16,8 @@ export interface XiaomiCloudSession {
     serviceToken: string;
 }
 
+export type XiaomiCloudSessionDecodeResult =
+    { status: 'valid'; session: XiaomiCloudSession } | { status: 'invalid_session' } | { status: 'invalid_json' };
+
 export type XiaomiQrLoginResult =
     { ok: true } | { pending: true; loginUrl?: string; expiresAt?: number } | { err: string };

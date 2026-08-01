@@ -41,6 +41,26 @@ describe('Xiaomi Cloud session TypeScript migration', () => {
         }
     });
 
+    it('decodes plain and encrypted stored sessions with explicit failure reasons', () => {
+        const session = createValidSession();
+        const serialized = JSON.stringify(session);
+        const encrypted = `encrypted:${Buffer.from(serialized).toString('base64')}`;
+        const decrypt = value => Buffer.from(value.slice('encrypted:'.length), 'base64').toString();
+        /** @type {Array<[unknown, ((value: string) => string) | undefined, unknown]>} */
+        const cases = [
+            [session, undefined, { status: 'valid', session }],
+            [serialized, undefined, { status: 'valid', session }],
+            [encrypted, decrypt, { status: 'valid', session }],
+            ['{"ssecurity":"short"}', undefined, { status: 'invalid_session' }],
+            ['not-json', undefined, { status: 'invalid_json' }],
+        ];
+
+        for (const [raw, decoder, expected] of cases) {
+            assert.deepEqual(LegacySession.decodeStoredCloudSession(raw, decoder), expected);
+            assert.deepEqual(TypedSession.decodeStoredCloudSession(raw, decoder), expected);
+        }
+    });
+
     it('keeps the connector compatibility method delegated to the extracted validator', () => {
         const connector = new XiaomiCloudConnector(
             { debug() {}, info() {}, warn() {}, error() {} },
