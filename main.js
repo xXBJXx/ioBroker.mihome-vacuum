@@ -1,4 +1,5 @@
 'use strict';
+/* eslint-disable jsdoc/check-tag-names */
 
 /*
  * Created with @iobroker/create-adapter v1.27.0
@@ -9,17 +10,12 @@
 const utils = require('@iobroker/adapter-core');
 const XiaomiCloudConnector = require('./lib/XiaomiCloudConnector');
 const miio = require('./lib/miio');
+/** @type {any} Legacy ioBroker object definitions are runtime-validated by package tests. */
 const objects = require('./lib/objects');
 
 const ViomiManager = require('./lib/viomi');
 const VacuumManager = require('./lib/vacuum');
 const DreameManager = require('./lib/dreame');
-//const VacuumManager2 = require('./lib/vacuumsaphire');
-
-// @ts-expect-ignore
-let Miio;
-let vacuum = null;
-let XiaomiApi = null;
 
 class MihomeVacuum extends utils.Adapter {
     constructor(options) {
@@ -28,7 +24,11 @@ class MihomeVacuum extends utils.Adapter {
             name: 'mihome-vacuum',
         });
         this.unsupportedFeatures = '|';
+        this.miio = null;
+        this.vacuum = null;
+        this.xiaomiApi = null;
         this.on('ready', this.onReady.bind(this));
+        // @ts-expect-error adapter-core's event overloads do not expose the supported stateChange runtime event here.
         this.on('stateChange', this.onStateChange.bind(this));
         this.on('message', this.onMessage.bind(this));
         this.on('unload', this.onUnload.bind(this));
@@ -57,15 +57,16 @@ class MihomeVacuum extends utils.Adapter {
         // create default States
         await Promise.all(
             objects.deviceInfo.map(async o => {
-                await this.setObjectNotExistsAsync(`deviceInfo${o._id ? `.${o._id}` : ''}`, o);
-                this.log.debug(`Create State for deviceInfo${o._id}`);
+                const objectId = `deviceInfo${o._id ? `.${o._id}` : ''}`;
+                await this.setObjectNotExistsAsync(objectId, o);
+                this.log.debug(`Creating ${o.type === 'channel' ? 'channel' : 'state'}: ${objectId}`);
             }),
         );
 
         //create new miio class
-        Miio = new miio(this);
+        this.miio = new miio(this);
 
-        Miio.on('connect', async () => {
+        this.miio.on('connect', async () => {
             this.log.debug('MAIN: Connected to device, try to get model..');
             this.setState('info.IPAddress', {
                 // @ts-expect-error var not defined
@@ -73,7 +74,7 @@ class MihomeVacuum extends utils.Adapter {
                 ack: true,
             });
             await this.getModel();
-            if (!vacuum) {
+            if (!this.vacuum) {
                 return;
             }
             this.subscribeStates('*');
@@ -96,10 +97,10 @@ class MihomeVacuum extends utils.Adapter {
         // check if additional iot states are enabled
         // @ts-expect-error var not defined
         if (this.config.enableAlexa) {
-            this.log.info('IOT enabled, create state');
+            this.log.debug('IoT integration enabled; creating additional states');
             objects.iotState.slice(1).map(o => this.setObjectNotExistsAsync(`control${o._id ? `.${o._id}` : ''}`, o));
         } else {
-            this.log.info('IOT disabled, delete state');
+            this.log.debug('IoT integration disabled; removing additional states');
             objects.iotState.slice(1).map(async o => await this.delObj(`control${o._id ? `.${o._id}` : ''}`));
         }
 
@@ -136,17 +137,15 @@ class MihomeVacuum extends utils.Adapter {
         // try 5 times to get data
         for (let i = 0; i < 5; i++) {
             DeviceData = await this.getModelFromApi();
-            this.log.debug(`Get Device data..${i}`);
             if (DeviceData) {
-                this.log.debug(
-                    `Get Device data from robot.. ${JSON.stringify(DeviceData.result).replace(/"token":"(.{10}).+"/g, '"token":"$1XXXXXX"')}`,
-                );
+                this.log.debug(`miIO.info attempt ${i + 1}/5 succeeded`);
                 await this.setModelInfoObject(DeviceData.result);
                 DeviceModel = DeviceData.result.model;
 
                 await this.setConnection(true);
                 break;
             }
+            this.log.debug(`miIO.info attempt ${i + 1}/5 completed without device information`);
         }
         if (!DeviceData) {
             //try to get from Config
@@ -166,19 +165,19 @@ class MihomeVacuum extends utils.Adapter {
             this.log.error('could not find model, please try again later or set manually in config');
             return;
         }
-        this.log.debug(`DeviceModel set to: ${DeviceModel}`);
+        this.log.info(`Device model detected: ${DeviceModel}`);
         // @ts-expect-error var not defined
         const manager = this.getManager(DeviceModel, this.config.manager);
 
         //we get a model so we can select a protocol
         if (manager) {
             this.device = DeviceModel;
-            vacuum = new manager(this, Miio);
+            this.vacuum = new manager(this, this.miio);
         }
     }
 
     getManager(model, configuredManager) {
-        const mangerList = {
+        const managerList = {
             viomi: ViomiManager,
             roborock: VacuumManager,
             rockrobo: VacuumManager,
@@ -187,67 +186,18 @@ class MihomeVacuum extends utils.Adapter {
         };
         let manager;
         if (configuredManager) {
-            manager = mangerList[configuredManager];
+            manager = managerList[configuredManager];
             if (!manager) {
                 this.log.error(`selected manager ${configuredManager} is not supported`);
             }
         } else if (model) {
             //try to get stock Model maybe it is working
-            manager = mangerList[model.split('.')[0]];
+            manager = managerList[model.split('.')[0]];
             if (!manager) {
                 this.log.error(`Model ${model} not supported! You can try to setup manually a library in settings.`);
             }
         }
         return manager;
-        /* const deviceList = {
-	//'mijia.vacuum.v2' : MiotVacuum, //  Modell: Xiaomi mijia g1
-	//'dreame.vacuum.mc1808' : MiotVacuum, //  Modell: Xioami mijia 1c
-	'viomi.vacuum.v7': ViomiManager,
-	'viomi.vacuum.v8': ViomiManager,
-	'viomi.vacuum.v19': ViomiManager, //test
-	'viomi.vacuum.v13': ViomiManager, // added for test
-	'roborock.vacuum.s4': VacuumManager, // Roborock S4
-	'roborock.vacuum.s5': VacuumManager,
-	'roborock.vacuum.s5e': VacuumManager, // Roborock S5 Max
-	'roborock.vacuum.s6': VacuumManager,
-	'roborock.vacuum.a08': VacuumManager, // Roborock S6 Pure
-	'roborock.vacuum.m1s': VacuumManager,
-	'rockrobo.vacuum.v1': VacuumManager,
-	'roborock.vacuum.a10': VacuumManager, // Roborock S6 MaxV
-	'roborock.vacuum.a15': VacuumManager, // Roborock S7
-	'roborock.vacuum.a27': VacuumManager, // Roborock S7 MaxV
-	'roborock.vacuum.a38': VacuumManager, // Roborock Q7 Max
-	'roborock.vacuum.a51': VacuumManager, // Roborock S8
-	'roborock.vacuum.a62': VacuumManager, // Roborock S7 Pro Ultra
-	'roborock.vacuum.a70': VacuumManager, // Roborock S8 Ultra Pro
-	'roborock.vacuum.a74': VacuumManager, // Roborock P10
-	// 'roborock.sweeper.e2v3': VacuumManager2,
-	// 'roborock.sweeper.e2v2': VacuumManager2,
-	// 'roborock.vacuum.e2': VacuumManager2,
-	// 'roborock.sweeper.c1v3': VacuumManager2,
-	// 'roborock.sweeper.c1v2': VacuumManager2,
-	// 'roborock.vacuum.c1': VacuumManager2,
-	// 'roborock.vacuum.a01': VacuumManager2,
-	// 'roborock.vacuum.a01v2': VacuumManager2,
-	// 'roborock.vacuum.a01v3': VacuumManager2,
-	// 'roborock.vacuum.a04': VacuumManager2,
-	// 'roborock.vacuum.a04v2': VacuumManager2,
-	// 'roborock.vacuum.a04v3': VacuumManager2
-	'dreame.vacuum.r2205': DreameManager, // Dreame D10 Plus
-	'dreame.vacuum.r2216o': DreameManager, // Dreame L10S Pro
-	'dreame.vacuum.r2228o': DreameManager, // Dreame L10S Ultra
-	'dreame.vacuum.p2008': DreameManager, // Dreame F9
-	'dreame.vacuum.p2009': DreameManager, // Dreame D9
-	'dreame.vacuum.p2027': DreameManager, // Dreame W10
-	'dreame.vacuum.p2028': DreameManager, // Dreame Z10 Pro
-	'dreame.vacuum.p2029': DreameManager, // Dreame L10 Pro
-	'dreame.vacuum.p2036': DreameManager, // Trouver Finder LDS Cleaner
-	'dreame.vacuum.p2041o': DreameManager, // Xiaomi Vacuum Mop 2 Pro+
-	'dreame.vacuum.p2114a': DreameManager, // Xiaomi Robot Vacuum X10 Plus
-	'xiaomi.vacuum.c102gl': DreameManager, // Xiaomi Robot Vacuum X20 Plus
-	'dreame.vacuum.p2148o': DreameManager, // Xiaomi Mijia Ultra Slim
-	'dreame.vacuum.p2156o': DreameManager, // MOVA Z500
-};*/
     }
 
     /**
@@ -285,14 +235,12 @@ class MihomeVacuum extends utils.Adapter {
 
     async getModelFromApi() {
         try {
-            const DeviceData = await Miio.sendMessage('miIO.info');
+            const client = this.miio;
+            if (!client) {
+                return null;
+            }
+            const DeviceData = await client.sendMessage('miIO.info');
 
-            this.log.debug(
-                `GETMODELFROMAPI:Data: ${JSON.stringify(DeviceData).replace(
-                    /"token":"(.{10}).+"/g,
-                    '"token":"$1XXXXXX"',
-                )}`,
-            );
             return DeviceData.result ? DeviceData : null;
         } catch (error) {
             this.log.debug(`getModelFromApi: ${error}`);
@@ -321,7 +269,7 @@ class MihomeVacuum extends utils.Adapter {
         // Reset the connection indicator during startup
         this.setConnection(false);
         await this.ensureAuthStates();
-        XiaomiApi = new XiaomiCloudConnector(this.log, {}, this);
+        this.xiaomiApi = new XiaomiCloudConnector(this.log, {}, this);
         this.main();
     }
 
@@ -331,6 +279,7 @@ class MihomeVacuum extends utils.Adapter {
             common: { name: 'Xiaomi Cloud authentication' },
             native: {},
         });
+        /** @type {Record<string, any>} */
         const states = {
             status: { name: 'Authentication status', type: 'string', role: 'text', def: 'not_authenticated' },
             loginUrl: { name: 'Xiaomi QR login URL', type: 'string', role: 'text.url', def: '' },
@@ -383,23 +332,43 @@ class MihomeVacuum extends utils.Adapter {
     }
 
     async saveTimersFromAdmin(timers) {
-        if (!Array.isArray(timers)) throw new Error('Timers must be an array');
+        if (!Array.isArray(timers)) {
+            throw new Error('Timers must be an array');
+        }
         const normalized = new Map();
         for (const timer of timers) {
             const days = [...new Set((timer.day || []).map(String).filter(day => /^[0-6]$/.test(day)))].sort().join('');
             const hour = Number(timer.hour);
             const minute = Number(timer.minute);
-            if (!days || !Number.isInteger(hour) || hour < 0 || hour > 23 || !Number.isInteger(minute) || minute < 0 || minute > 59) {
+            if (
+                !days ||
+                !Number.isInteger(hour) ||
+                hour < 0 ||
+                hour > 23 ||
+                !Number.isInteger(minute) ||
+                minute < 0 ||
+                minute > 59
+            ) {
                 throw new Error('Invalid timer definition');
             }
             const id = `${days}_${String(hour).padStart(2, '0')}_${String(minute).padStart(2, '0')}`;
-            if (normalized.has(id)) throw new Error('Two timers cannot have the same start time');
-            normalized.set(id, { enabled: !!timer.enabled, channels: Array.isArray(timer.channels) ? timer.channels : [], rooms: Array.isArray(timer.rooms) ? timer.rooms : [] });
+            if (normalized.has(id)) {
+                throw new Error('Two timers cannot have the same start time');
+            }
+            normalized.set(id, {
+                enabled: !!timer.enabled,
+                channels: Array.isArray(timer.channels) ? timer.channels : [],
+                rooms: Array.isArray(timer.rooms) ? timer.rooms : [],
+            });
         }
         const existing = await this.getAdapterObjectsAsync();
         const prefix = `${this.namespace}.timer.`;
         for (const object of Object.values(existing)) {
-            if (object.type === 'state' && object._id.startsWith(prefix) && !normalized.has(object._id.slice(prefix.length))) {
+            if (
+                object.type === 'state' &&
+                object._id.startsWith(prefix) &&
+                !normalized.has(object._id.slice(prefix.length))
+            ) {
                 await this.delObjectAsync(object._id);
             }
         }
@@ -407,7 +376,16 @@ class MihomeVacuum extends utils.Adapter {
             const stateId = `timer.${id}`;
             await this.extendObjectAsync(stateId, {
                 type: 'state',
-                common: { name: id, type: 'number', role: 'value', read: true, write: true, min: -1, max: 2, states: { '1': 'enabled', '-1': 'disabled', '0': 'skip', '2': 'start now' } },
+                common: {
+                    name: id,
+                    type: 'number',
+                    role: 'value',
+                    read: true,
+                    write: true,
+                    min: -1,
+                    max: 2,
+                    states: { 1: 'enabled', '-1': 'disabled', 0: 'skip', 2: 'start now' },
+                },
                 native: { channels: timer.channels, nextProcessTime: 0 },
             });
             await this.setStateAsync(stateId, timer.enabled ? 1 : -1, false);
@@ -415,7 +393,11 @@ class MihomeVacuum extends utils.Adapter {
         const roomObjects = await this.getForeignObjectsAsync('enum.rooms.*');
         for (const room of Object.values(roomObjects || {})) {
             const members = (room.common.members || []).filter(member => !member.startsWith(prefix));
-            for (const [id, timer] of normalized) if (timer.rooms.includes(room._id)) members.push(`${prefix}${id}`);
+            for (const [id, timer] of normalized) {
+                if (timer.rooms.includes(room._id)) {
+                    members.push(`${prefix}${id}`);
+                }
+            }
             room.common.members = [...new Set(members)];
             await this.setForeignObjectAsync(room._id, room);
         }
@@ -428,38 +410,46 @@ class MihomeVacuum extends utils.Adapter {
      * @param callback function
      */
     async onUnload(callback) {
-        try {
-            XiaomiApi?.shutdown();
-            if (vacuum) {
-                await vacuum.close();
+        let callbackCalled = false;
+        const finishUnload = () => {
+            if (callbackCalled) {
+                return;
             }
-            if (Miio) {
-                Miio.close(callback);
-            } else {
-                callback();
-            }
-        } catch (e) {
-            this.log.debug(`onUNload: ${e}`);
+            callbackCalled = true;
             callback();
+        };
+        if (!this.unloadPromise) {
+            this.unloadPromise = (async () => {
+                try {
+                    this.xiaomiApi?.shutdown();
+                } catch (e) {
+                    this.log.debug(`Cloud shutdown: ${e}`);
+                }
+                try {
+                    if (this.vacuum) {
+                        await this.vacuum.close();
+                    }
+                } catch (e) {
+                    this.log.debug(`Manager shutdown: ${e}`);
+                }
+                try {
+                    const client = this.miio;
+                    if (client) {
+                        await new Promise(resolve => client.close(resolve));
+                    }
+                } catch (e) {
+                    this.log.debug(`UDP shutdown: ${e}`);
+                }
+            })();
+        }
+        try {
+            await this.unloadPromise;
+        } catch (e) {
+            this.log.debug(`onUnload: ${e}`);
+        } finally {
+            finishUnload();
         }
     }
-
-    // If you need to react to object changes, uncomment the following block and the corresponding line in the constructor.
-    // You also need to subscribe to the objects with `this.subscribeObjects`, similar to `this.subscribeStates`.
-    // /**
-    //  * Is called if a subscribed object changes
-    //  * @param {string} id
-    //  * @param {ioBroker.Object | null | undefined} obj
-    //  */
-    // onObjectChange(id, obj) {
-    //     if (obj) {
-    //         // The object was changed
-    //         this.log.info(`object ${id} changed: ${JSON.stringify(obj)}`);
-    //     } else {
-    //         // The object was deleted
-    //         this.log.info(`object ${id} deleted`);
-    //     }
-    // }
 
     /**
      * Is called if a subscribed state changes
@@ -491,22 +481,26 @@ class MihomeVacuum extends utils.Adapter {
                         true,
                     );
                 }
-                this.log.info(`send message: Method: ${values[0]} Params: ${values[1]}`);
+                this.log.info('Send custom command with parameters');
             } else {
-                this.log.info(`send message: Method: ${values[0]}`);
+                this.log.info('Send custom command without parameters');
             }
             this.setStateAsync(id, state.val, true);
 
             try {
-                const DeviceData = await Miio.sendMessage(values[0], params);
-                this.log.debug(`Get self send data: ${JSON.stringify(DeviceData)}`);
+                const client = this.miio;
+                if (!client) {
+                    throw new Error('UDP client not initialized');
+                }
+                const DeviceData = await client.sendMessage(values[0], params);
+                this.log.debug('Custom command response received');
                 this.setStateAsync('control.X_get_response', JSON.stringify(DeviceData.result), true);
             } catch (error) {
                 this.setStateAsync('control.X_get_response', `[${error}]`, true);
             }
         }
-        if (vacuum) {
-            vacuum.stateChange(id, state);
+        if (this.vacuum) {
+            this.vacuum.stateChange(id, state);
         }
     }
 
@@ -535,15 +529,15 @@ class MihomeVacuum extends utils.Adapter {
         if (obj) {
             switch (obj.command) {
                 case 'discovery': {
-                    if (!XiaomiApi) {
-                        XiaomiApi = new XiaomiCloudConnector(this.log, obj.message.authObj, this);
+                    if (!this.xiaomiApi) {
+                        this.xiaomiApi = new XiaomiCloudConnector(this.log, obj.message.authObj, this);
                     } else {
-                        XiaomiApi.init(obj.message.authObj);
+                        this.xiaomiApi.init(obj.message.authObj);
                     }
-                    const result = await XiaomiApi.login();
+                    const result = await this.xiaomiApi.login();
                     if (result.ok) {
                         try {
-                            respond(await XiaomiApi.getDevices(obj.message.server));
+                            respond(await this.xiaomiApi.getDevices(obj.message.server));
                         } catch (error) {
                             respond({
                                 err: error instanceof Error ? error.message : 'Could not retrieve Xiaomi devices',
@@ -556,11 +550,11 @@ class MihomeVacuum extends utils.Adapter {
                 }
 
                 case 'startCloudLogin': {
-                    if (!XiaomiApi) {
-                        XiaomiApi = new XiaomiCloudConnector(this.log, {}, this);
+                    if (!this.xiaomiApi) {
+                        this.xiaomiApi = new XiaomiCloudConnector(this.log, {}, this);
                     }
                     this.log.debug('Cloud auth: QR login start requested by admin');
-                    respond(await XiaomiApi.startQrLogin());
+                    respond(await this.xiaomiApi.startQrLogin());
                     return;
                 }
 
@@ -582,15 +576,12 @@ class MihomeVacuum extends utils.Adapter {
 
                 // ======================================================================
                 default:
-                    //respond(predefinedResponses.ERROR_UNKNOWN_COMMAND);
-                    //await vacuum.onMessage(obj)
-                    //this.log.warn('gottosent vacuu '+ JSON.stringify(obj))
-                    if (!vacuum) {
+                    if (!this.vacuum) {
                         return respond({
                             error: new Error('Not initialized'),
                         });
                     }
-                    respond(await vacuum.onMessage(obj));
+                    respond(await this.vacuum.onMessage(obj));
                     return;
             }
         }

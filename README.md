@@ -20,7 +20,6 @@ This adapter allows you to control the Xiaomi vacuum cleaner.
 ## Content
  - [Known Errors](#known_errors)
     - [Error at installation (canvas)](#error_at_installation)
-    - [HTTP error when getting token cookie{}](#http_error_when_getting_token_cookie{})
 - [Setup](#configuration)
     - [Configure Adapter](#adapter-configuration)
         - [Control via Alexa](#control-over-alexa)
@@ -80,10 +79,6 @@ sudo apt-get install build-essential libcairo2-dev libpango1.0-dev libjpeg-dev l
 
 switch into : `cd /opt/iobroker/node_modules/iobroker.mihome-vacuum` then `npm install canvas`
 
-### HTTP error when getting token cookie{}
-Sometimes you can't connect to the xiaomi cloud. 
-Please open Browser, go to Mihome and login. Enter the code you received via mail. After that, the connection should work.
-
 ### Gets only Helo message Timeout
 PLease be sure, that you robot is connected with the Mihome App and NOT with the Roborock App
 
@@ -103,6 +98,7 @@ Otherwise please follow the instruction in the Link:
 - The port of the robot is set to "54321" by default, this should not be changed
 - Own port, should only be changed with second robot
 - Query Interval The time in ms in which the robot's status values are retrieved (should not be <10000)
+- `wifiInterval` and the e-mail/password fields are retained only for compatibility with existing instance configurations. Current local control does not use Xiaomi credentials, and current cloud authentication uses QR login.
 
 #### Control over Alexa
 The special control state `clean_home` will be created for Alexa. 

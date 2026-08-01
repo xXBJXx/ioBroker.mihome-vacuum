@@ -176,9 +176,18 @@
         var active = false;
         var curToken;
         var authObj= null;
+        var cloudAuthPollTimer = null;
+
+        function stopCloudAuthPolling() {
+            if (cloudAuthPollTimer !== null) {
+                clearInterval(cloudAuthPollTimer);
+                cloudAuthPollTimer = null;
+            }
+        }
 
         // the function loadSettings has to exist ...
         function load(settings, onChange) {
+            stopCloudAuthPolling();
             namespace = adapter + '.' + instance + '.';
             if (!settings) return;
             $('.hidden').hide();
@@ -247,11 +256,18 @@
 
             // wenn device selection changed.
             $('#devices').change(function () {
-                let tmp = JSON.parse($(this).val() || {});
-                console.log("changed....devices" + $(this).val())
-                setValue('token', tmp.token || '', onChange);
-                setValue('ip', tmp.localip || '', onChange);
-                setValue('model', tmp.model || '', onChange);
+                const selectedDevice = $(this).val();
+                if (!selectedDevice) return;
+
+                try {
+                    const device = JSON.parse(selectedDevice);
+                    if (!device || typeof device !== 'object') return;
+                    setValue('token', typeof device.token === 'string' ? device.token : '', onChange);
+                    setValue('ip', typeof device.localip === 'string' ? device.localip : '', onChange);
+                    setValue('model', typeof device.model === 'string' ? device.model : '', onChange);
+                } catch (error) {
+                    showToast(_('Invalid device data'));
+                }
             });
 
             $('#getDevices').on('click', function () {
@@ -313,7 +329,7 @@
                 });
             }
 
-            $('#startCloudLogin').on('click', function () {
+            $('#startCloudLogin').off('click.mihomeVacuumAuth').on('click.mihomeVacuumAuth', function () {
                 if (!active || $(this).hasClass('disabled')) return;
                 $(this).addClass('disabled');
                 sendTo(adapter + '.' + instance, 'startCloudLogin', {}, function (result) {
@@ -322,7 +338,10 @@
                 });
             });
             updateCloudAuth();
-            setInterval(updateCloudAuth, 3000);
+            cloudAuthPollTimer = setInterval(updateCloudAuth, 3000);
+            $(window)
+                .off('unload.mihomeVacuumAuth')
+                .on('unload.mihomeVacuumAuth', stopCloudAuthPolling);
 
             socket.emit('getState', 'system.adapter.' + adapter + '.' + instance + '.alive', function (err, state) {
                 active = /*common.enabled ||*/ (state && state.val);
@@ -416,23 +435,34 @@
             onChange(false);
         }
 
+        function createDeviceOption(device) {
+            if (!device || typeof device !== 'object') return null;
+            const entry = {
+                token: typeof device.token === 'string' ? device.token : '',
+                localip: typeof device.localip === 'string' ? device.localip : '',
+                model: typeof device.model === 'string' ? device.model : ''
+            };
+            const label = entry.model + (entry.localip ? ' - ip: ' + entry.localip : '');
+            return $('<option></option>').val(JSON.stringify(entry)).text(label);
+        }
+
         function setDevices(arr){
             rawdevices = arr;
-            let text = "";
+            const $devices = $('#devices').empty();
+            $devices.append($('<option></option>').val('').text(_('choose Device')));
 
-            for (let homeId in arr){
-                for (let device  of arr[homeId].result.device_info){
-                    const entry= {
-                        token: device.token,
-                        localip: device.localip,
-                        model:device.model
+            if (arr && typeof arr === 'object') {
+                for (let homeId in arr){
+                    const home = arr[homeId];
+                    const devices = home && home.result && Array.isArray(home.result.device_info) ?
+                        home.result.device_info : [];
+                    for (let device of devices){
+                        const option = createDeviceOption(device);
+                        if (option) $devices.append(option);
                     }
-                    text += "<option value='" + JSON.stringify(entry) + "' >" + entry
-                        .model + ' - token: ' + entry.token + ' - ip: ' + (entry.localip ?
-                            entry.localip : '') + '</option>';
                 }
             }
-            $('#devices').html('<option>' + _('choose Device') + '</option>' + text).select();
+            $devices.select();
         }
 
         function translateTable(channelStr) {
@@ -456,7 +486,6 @@
 
         function loadSelect(array) {
             let devices;
-            let text = '';
             try {
                 devices = JSON.parse(array)
             } catch (e) {
@@ -464,14 +493,14 @@
                 return
             }
             if (Array.isArray(devices)) {
+                const $devices = $('#devices').empty();
                 devices.forEach(function (entry) {
-                    text += "<option value='" + JSON.stringify(entry) + "' >" + entry
-                        .model + ' - token: ' + entry.token + ' - ip: ' + (entry.localip ?
-                            entry.localip : '') + '</option>';
+                    const option = createDeviceOption(entry);
+                    if (option) $devices.append(option);
 
                     //check if in config
                 });
-                $('#devices').html(text).select();
+                $devices.select();
             }
         }
 
@@ -689,15 +718,15 @@
                 </div>
                 <div class="row">
                     <div class="col s12 m3 l2">
-                        <a id="startCloudLogin" class="btn-small">Start Xiaomi QR login</a>
+                        <a id="startCloudLogin" class="btn-small translate" data-lang="Start Xiaomi QR login">Start Xiaomi QR login</a>
                     </div>
                     <div class="col s12 m9 l10">
-                        <div>Cloud status: <span id="cloudAuthStatus">not_authenticated</span></div>
+                        <div><span class="translate" data-lang="Cloud status">Cloud status</span>: <span id="cloudAuthStatus">not_authenticated</span></div>
                         <a id="cloudLoginUrl" target="_blank" rel="noopener noreferrer"></a>
                     </div>
                 </div>
                 <div class="row">
-                    <div class="col s12">Use the QR login above, then click “get devices”. E-mail, password and captcha are kept only for backwards-compatible configuration and are no longer sent for new logins.</div>
+                    <div class="col s12 translate" data-lang="QR login help">Use the QR login above, then click “get devices”. E-mail, password and captcha are kept only for backwards-compatible configuration and are no longer sent for new logins.</div>
                 </div>
                 <div class="row">
                     <div class="col s12 m4 l2 input-field">
