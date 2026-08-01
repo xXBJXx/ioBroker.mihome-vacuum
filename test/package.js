@@ -99,6 +99,23 @@ describe('Runtime dependencies', () => {
         assert.doesNotMatch(deployJob, /NPM_TOKEN|npm-token|::set-output|npm install|actions\/create-release/);
     });
 
+    it('uses tokenless Dependabot auto-merge for bounded update classes', () => {
+        const workflow = fs.readFileSync(
+            path.join(__dirname, '..', '.github', 'workflows', 'dependabot-auto-merge.yml'),
+            'utf8',
+        );
+
+        assert.match(workflow, /github\.event\.pull_request\.user\.login == 'dependabot\[bot\]'/);
+        assert.match(workflow, /uses: dependabot\/fetch-metadata@v3/);
+        assert.match(workflow, /gh pr merge --auto --squash/);
+        assert.match(workflow, /direct:production/);
+        assert.match(workflow, /direct:development/);
+        assert.match(workflow, /version-update:semver-patch/);
+        assert.match(workflow, /version-update:semver-minor/);
+        assert.doesNotMatch(workflow, /version-update:semver-major|AUTO_MERGE_TOKEN|ahmadnassri|actions\/checkout/);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', '.github', 'auto-merge.yml')), false);
+    });
+
     it('ships only the declared Materialize configuration page', () => {
         const ioPackage = require('../io-package.json');
         const adminDirectory = path.join(__dirname, '..', 'admin');
