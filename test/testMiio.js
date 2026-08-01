@@ -10,6 +10,7 @@ class FakeSocket extends EventEmitter {
         this.sentPackets = [];
         this.deferSendCallback = false;
         this.pendingSendCallbacks = [];
+        this.sendError = null;
     }
 
     bind() {}
@@ -27,7 +28,7 @@ class FakeSocket extends EventEmitter {
             if (this.deferSendCallback) {
                 this.pendingSendCallbacks.push(callback);
             } else {
-                callback();
+                callback(this.sendError);
             }
         }
     }
@@ -240,13 +241,46 @@ describe('Miio request lifecycle', () => {
         assert.equal(fixture.logs.debug.some(message => message.includes('timed out')), false);
     });
 
+    it('rejects a request while the device is disconnected', async () => {
+        const fixture = createClient();
+        fixture.client.connected = false;
+
+        await assert.rejects(fixture.client.sendMessage('get_status'), { code: 'MIIO_NOT_CONNECTED' });
+        assert.equal(fixture.socket.sentPackets.length, 0);
+    });
+
+    it('rejects a UDP send failure with a stable error code', async () => {
+        const fixture = createClient();
+        fixture.socket.sendError = new Error('synthetic send failure');
+
+        await assert.rejects(fixture.client.sendMessage('get_status'), { code: 'MIIO_SEND_FAILED' });
+        assert.equal(fixture.socket.listenerCount('message'), 0);
+    });
+
+    it('rejects an invalid response without exposing its contents', async () => {
+        const fixture = createClient();
+        fixture.client.packet.getPlainData = () => 'PRIVATE_INVALID_RESPONSE';
+        const response = fixture.client.sendMessage('get_status');
+
+        fixture.socket.emit('message', Buffer.alloc(33), { port: 54321 });
+
+        await assert.rejects(response, error => {
+            assert.ok(error instanceof Error);
+            assert.ok('code' in error);
+            assert.equal(error.code, 'MIIO_INVALID_RESPONSE');
+            assert.doesNotMatch(error.message, /PRIVATE_INVALID_RESPONSE/);
+            return true;
+        });
+    });
+
     it('times out once with safe request context', async () => {
         const fixture = createClient();
         const response = fixture.client.sendMessage('get_status');
+        const rejection = assert.rejects(response, { code: 'MIIO_TIMEOUT' });
 
         await clock.tickAsync(2000);
 
-        assert.deepEqual(await response, {});
+        await rejection;
         assert.equal(
             fixture.logs.debug.includes(
                 'MIIO request timed out: method=get_status, id=1, duration=2000ms, timeout=2000ms',
@@ -259,9 +293,10 @@ describe('Miio request lifecycle', () => {
     it('ignores a late answer after timeout', async () => {
         const fixture = createClient();
         const response = fixture.client.sendMessage('get_status');
+        const rejection = assert.rejects(response, { code: 'MIIO_TIMEOUT' });
 
         await clock.tickAsync(2000);
-        assert.deepEqual(await response, {});
+        await rejection;
         fixture.answer(1, ['late']);
 
         assert.equal(fixture.socket.listenerCount('message'), 0);
@@ -289,6 +324,7 @@ describe('Miio request lifecycle', () => {
         const fixture = createClient();
         fixture.socket.deferSendCallback = true;
         const response = fixture.client.sendMessage('get_status');
+        const rejection = assert.rejects(response, { code: 'MIIO_SOCKET_CLOSED' });
 
         fixture.client.close();
         const sendCallback = fixture.socket.pendingSendCallbacks.shift();
@@ -296,7 +332,7 @@ describe('Miio request lifecycle', () => {
         sendCallback();
         await clock.tickAsync(3000);
 
-        assert.deepEqual(await response, {});
+        await rejection;
         assert.equal(fixture.socket.listenerCount('message'), 0);
         assert.equal(fixture.logs.debug.some(message => message.includes('timed out')), false);
     });
@@ -309,7 +345,7 @@ describe('Miio request lifecycle', () => {
         const debugMessages = fixture.logs.debug.length;
         const errorMessages = fixture.logs.error.length;
 
-        assert.deepEqual(await fixture.client.sendMessage('get_status'), {});
+        await assert.rejects(fixture.client.sendMessage('get_status'), { code: 'MIIO_CLOSED' });
         assert.equal(fixture.socket.sentPackets.length, sentPackets);
         assert.equal(fixture.logs.debug.length, debugMessages);
         assert.equal(fixture.logs.error.length, errorMessages);
@@ -319,23 +355,28 @@ describe('Miio request lifecycle', () => {
         const fixture = createClient();
         const response = fixture.client.sendMessage('get_status');
         let settled = false;
-        response.then(() => (settled = true));
+        const rejection = assert.rejects(response, { code: 'MIIO_TIMEOUT' });
+        response.then(
+            () => (settled = true),
+            () => (settled = true),
+        );
 
         fixture.answer(99);
         await Promise.resolve();
         assert.equal(settled, false);
         await clock.tickAsync(2000);
 
-        assert.deepEqual(await response, {});
+        await rejection;
     });
 
     it('settles and removes the listener on socket error', async () => {
         const fixture = createClient();
         const response = fixture.client.sendMessage('get_status');
+        const rejection = assert.rejects(response, { code: 'MIIO_SOCKET_CLOSED' });
 
         fixture.socket.emit('error', new Error('synthetic UDP failure'));
 
-        assert.deepEqual(await response, {});
+        await rejection;
         assert.equal(fixture.socket.listenerCount('message'), 0);
         assert.equal(fixture.socket.closeCalls, 1);
     });

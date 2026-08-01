@@ -548,7 +548,13 @@ class MihomeVacuum extends utils.Adapter {
             }
         }
         if (this.vacuum) {
-            this.vacuum.stateChange(id, state);
+            try {
+                await this.vacuum.stateChange(id, state);
+            } catch (error) {
+                this.log.warn(
+                    `Could not process state change: ${error instanceof Error ? error.message : 'unknown error'}`,
+                );
+            }
         }
     }
 
@@ -626,10 +632,22 @@ class MihomeVacuum extends utils.Adapter {
                 default:
                     if (!this.vacuum) {
                         return respond({
-                            error: new Error('Not initialized'),
+                            error: { code: 'NOT_INITIALIZED', message: 'Adapter is not initialized' },
                         });
                     }
-                    respond(await this.vacuum.onMessage(obj));
+                    try {
+                        respond(await this.vacuum.onMessage(obj));
+                    } catch (error) {
+                        respond({
+                            error: {
+                                code:
+                                    error instanceof Error && 'code' in error && typeof error.code === 'string'
+                                        ? error.code
+                                        : 'COMMAND_FAILED',
+                                message: error instanceof Error ? error.message : 'Command failed',
+                            },
+                        });
+                    }
                     return;
             }
         }

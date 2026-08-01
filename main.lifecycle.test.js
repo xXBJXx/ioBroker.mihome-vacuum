@@ -34,9 +34,16 @@ class FakeAdapter extends EventEmitter {
 }
 
 /**
- * @param {{ closeThrows?: boolean, managerCloseThrows?: boolean, managerReadyRejects?: boolean, modelResponses?: object[] }} [options]
+ * @param {{ closeThrows?: boolean, managerCloseThrows?: boolean, managerReadyRejects?: boolean, managerCommandRejects?: boolean, managerStateChangeRejects?: boolean, modelResponses?: object[] }} [options]
  */
-function createAdapter({ closeThrows = false, managerCloseThrows = false, managerReadyRejects = false, modelResponses } = {}) {
+function createAdapter({
+    closeThrows = false,
+    managerCloseThrows = false,
+    managerReadyRejects = false,
+    managerCommandRejects = false,
+    managerStateChangeRejects = false,
+    modelResponses,
+} = {}) {
     const counters = {
         udpClose: 0,
         managerClose: 0,
@@ -71,6 +78,17 @@ function createAdapter({ closeThrows = false, managerCloseThrows = false, manage
         async close() {
             counters.managerClose++;
             if (managerCloseThrows) throw new Error('synthetic manager close failure');
+        }
+
+        async stateChange() {
+            if (managerStateChangeRejects) throw new Error('synthetic state change failure');
+        }
+
+        async onMessage() {
+            if (managerCommandRejects) {
+                throw Object.assign(new Error('MIIO request timed out'), { code: 'MIIO_TIMEOUT' });
+            }
+            return { result: ['ok'] };
         }
     }
 
@@ -244,6 +262,30 @@ describe('Adapter unload lifecycle', () => {
         assert.equal(counters.managerClose, 1);
         assert.equal(counters.udpClose, 1);
         assert.equal(callbackCalls, 1);
+    });
+
+    it('returns a typed response when a manager command fails', async () => {
+        const { adapter } = createAdapter({ managerCommandRejects: true });
+
+        await adapter.main();
+        await adapter.getModel();
+        await adapter.onMessage({ command: 'getStatus', message: {}, from: 'script', callback: 'request' });
+
+        assert.deepEqual(adapter.sentMessages[0].response, {
+            error: { code: 'MIIO_TIMEOUT', message: 'MIIO request timed out' },
+        });
+        await adapter.onUnload(() => undefined);
+    });
+
+    it('awaits and contains a failed manager state change', async () => {
+        const { adapter } = createAdapter({ managerStateChangeRejects: true });
+
+        await adapter.main();
+        await adapter.getModel();
+        await adapter.onStateChange('mihome-vacuum.test.control.start', { val: true, ack: false });
+
+        assert.equal(adapter.warnMessages.includes('Could not process state change: synthetic state change failure'), true);
+        await adapter.onUnload(() => undefined);
     });
 
     it('retries miIO.info sequentially and logs only a real result as success', async () => {
