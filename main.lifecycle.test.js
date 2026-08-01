@@ -313,4 +313,35 @@ describe('Adapter unload lifecycle', () => {
         assert.equal(startupCompleted, true);
         await adapter.onUnload(() => undefined);
     });
+
+    it('restores and normalizes unsupported features before startup completes', async () => {
+        const { adapter } = createAdapter();
+        /** @type {(state: {val: string}) => void} */
+        let releaseState = () => undefined;
+        const stateGate = new Promise(resolve => {
+            releaseState = resolve;
+        });
+        adapter.getStateAsync = async id => {
+            if (id === 'deviceInfo.unsupported') {
+                return stateGate;
+            }
+            return null;
+        };
+
+        let startupCompleted = false;
+        const startup = adapter.main().then(() => {
+            startupCompleted = true;
+        });
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.equal(startupCompleted, false);
+        assert.equal(adapter.isUnsupportedFeature('segemntCleanRepeat'), false);
+
+        releaseState({ val: 'segemntCleanRepeat' });
+        await startup;
+
+        assert.equal(adapter.unsupportedFeatures, '|segemntCleanRepeat|');
+        assert.equal(adapter.isUnsupportedFeature('segemntCleanRepeat'), true);
+        await adapter.onUnload(() => undefined);
+    });
 });

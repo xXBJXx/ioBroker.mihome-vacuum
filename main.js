@@ -111,17 +111,13 @@ class MihomeVacuum extends utils.Adapter {
             await Promise.all(objects.iotState.slice(1).map(o => this.delObj(`control${o._id ? `.${o._id}` : ''}`)));
         }
 
-        this.getStateAsync('deviceInfo.unsupported').then(obj => {
-            if (obj && typeof obj.val == 'string') {
-                this.unsupportedFeatures = obj.val;
-                if (!this.unsupportedFeatures.endsWith('|')) {
-                    this.unsupportedFeatures.concat('|');
-                }
-                if (!this.unsupportedFeatures.startsWith('|')) {
-                    this.unsupportedFeatures = `|${this.unsupportedFeatures}`;
-                }
-            }
-        });
+        const unsupportedState = await this.getStateAsync('deviceInfo.unsupported');
+        if (unsupportedState && typeof unsupportedState.val === 'string') {
+            const storedFeatures = unsupportedState.val;
+            this.unsupportedFeatures = storedFeatures
+                ? `${storedFeatures.startsWith('|') ? '' : '|'}${storedFeatures}${storedFeatures.endsWith('|') ? '' : '|'}`
+                : '|';
+        }
     }
 
     isUnsupportedFeature(key) {
