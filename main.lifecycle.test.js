@@ -25,6 +25,7 @@ class FakeAdapter extends EventEmitter {
         return null;
     }
     async setStateAsync() {}
+    setState() {}
     subscribeStates() {}
     sendTo(from, command, response, callback) {
         this.sentMessages.push({ from, command, response, callback });
@@ -321,6 +322,28 @@ describe('Adapter unload lifecycle', () => {
         assert.deepEqual(connectionValues, [true, false]);
         assert.equal(adapter.errorMessages.includes('Could not initialize the selected vacuum manager'), true);
         assert.equal(adapter.errorMessages.join('\n').includes('SENSITIVE_MANAGER_INITIALIZATION_MARKER'), false);
+        await adapter.onUnload(() => undefined);
+    });
+
+    it('handles connection initialization failures without exposing details', async () => {
+        const { adapter } = createAdapter();
+        const connectionValues = [];
+        adapter.setStateAsync = async (id, state) => {
+            if (id === 'deviceInfo.model') {
+                throw new Error('SENSITIVE_CONNECTION_FAILURE_MARKER');
+            }
+            if (id === 'info.connection') {
+                connectionValues.push(state.val);
+            }
+        };
+
+        await adapter.main();
+        await adapter.handleConnect();
+
+        assert.equal(adapter.vacuum, null);
+        assert.deepEqual(connectionValues, [false]);
+        assert.equal(adapter.errorMessages.includes('Device connection initialization failed'), true);
+        assert.equal(adapter.errorMessages.join('\n').includes('SENSITIVE_CONNECTION_FAILURE_MARKER'), false);
         await adapter.onUnload(() => undefined);
     });
 

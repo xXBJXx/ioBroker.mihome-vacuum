@@ -69,18 +69,8 @@ class MihomeVacuum extends utils.Adapter {
         //create new miio class
         this.miio = new miio(this);
 
-        this.miio.on('connect', async () => {
-            this.log.debug('MAIN: Connected to device, try to get model..');
-            this.setState('info.IPAddress', {
-                // @ts-expect-error var not defined
-                val: this.config.ip,
-                ack: true,
-            });
-            await this.getModel();
-            if (!this.vacuum) {
-                return;
-            }
-            this.subscribeStates('*');
+        this.miio.on('connect', () => {
+            this.handleConnect();
         });
 
         //check if Self send Commands is enabled
@@ -117,6 +107,29 @@ class MihomeVacuum extends utils.Adapter {
             this.unsupportedFeatures = storedFeatures
                 ? `${storedFeatures.startsWith('|') ? '' : '|'}${storedFeatures}${storedFeatures.endsWith('|') ? '' : '|'}`
                 : '|';
+        }
+    }
+
+    async handleConnect() {
+        try {
+            this.log.debug('MAIN: Connected to device, try to get model..');
+            this.setState('info.IPAddress', {
+                // @ts-expect-error var not defined
+                val: this.config.ip,
+                ack: true,
+            });
+            await this.getModel();
+            if (!this.vacuum) {
+                return;
+            }
+            this.subscribeStates('*');
+        } catch {
+            this.log.error('Device connection initialization failed');
+            try {
+                await this.setConnection(false);
+            } catch {
+                this.log.debug('Could not reset the connection indicator after the device connection failure');
+            }
         }
     }
 
