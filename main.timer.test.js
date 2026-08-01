@@ -14,6 +14,7 @@ class TimerFakeAdapter extends EventEmitter {
         this.extendedObjects = [];
         this.stateWrites = [];
         this.foreignObjectWrites = [];
+        this.messageResponses = [];
         this.log = {
             debug: () => undefined,
             info: () => undefined,
@@ -56,6 +57,10 @@ class TimerFakeAdapter extends EventEmitter {
     async setForeignObjectAsync(id, object) {
         this.foreignObjectWrites.push({ id, object });
         this.roomObjects[id] = object;
+    }
+
+    sendTo(from, command, response, callback) {
+        this.messageResponses.push({ from, command, response, callback });
     }
 }
 
@@ -150,5 +155,34 @@ describe('Adapter timer administration', () => {
         assert.deepEqual(adapter.extendedObjects, []);
         assert.deepEqual(adapter.stateWrites, []);
         assert.deepEqual(adapter.foreignObjectWrites, []);
+    });
+
+    it('routes timer results and validation errors through the admin message callback', async () => {
+        const adapter = createTimerAdapter();
+        const callback = { message: 'admin-callback' };
+
+        await adapter.onMessage({
+            command: 'getTimers',
+            message: {},
+            from: 'system.adapter.admin.0',
+            callback,
+        });
+        await adapter.onMessage({
+            command: 'saveTimers',
+            message: { timers: 'invalid' },
+            from: 'system.adapter.admin.0',
+            callback,
+        });
+
+        assert.deepEqual(adapter.messageResponses[0], {
+            from: 'system.adapter.admin.0',
+            command: 'getTimers',
+            response: { timers: [], rooms: [], channels: [] },
+            callback,
+        });
+        assert.equal(adapter.messageResponses[1].command, 'saveTimers');
+        assert.match(adapter.messageResponses[1].response.err, /Timers must be an array/);
+        assert.deepEqual(adapter.deletedObjects, []);
+        assert.deepEqual(adapter.extendedObjects, []);
     });
 });

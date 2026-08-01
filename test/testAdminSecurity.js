@@ -32,10 +32,29 @@ describe('Materialize admin security', () => {
         assert.match(adminSource, /on\('unload\.mihomeVacuumAuth', stopCloudAuthPolling\)/);
     });
 
+    it('loads and saves timers through the validated adapter backend', () => {
+        assert.match(adminSource, /sendTo\(adapter \+ '\.' \+ instance, 'getTimers'/);
+        assert.match(adminSource, /sendTo\(adapter \+ '\.' \+ instance, 'saveTimers'/);
+        assert.match(adminSource, /rooms: timer\.room \|\| \[\]/);
+        assert.match(adminSource, /room: timer\.rooms \|\| \[\]/);
+        assert.match(adminSource, /typeof systemLang === 'string'/);
+        assert.match(adminSource, /replace\(\/\[<>&'";\\\/\]\/g, ' '\)/);
+        assert.doesNotMatch(adminSource, /getForeignStates', namespace \+ ['"]timer\.\*['"]/);
+        assert.doesNotMatch(adminSource, /socket\.emit\('delObject', t\)/);
+        assert.doesNotMatch(adminSource, /socket\.emit\('setObject', stateId/);
+    });
+
     it('provides every QR login label in all supported admin languages', () => {
         const dictionary = require('../admin/words.js');
         const languages = ['en', 'de', 'ru', 'pt', 'nl', 'fr', 'it', 'es', 'pl', 'zh-cn'];
-        for (const key of ['Xiaomi cloud login', 'Start Xiaomi QR login', 'Cloud status', 'QR login help']) {
+        for (const key of [
+            'Xiaomi cloud login',
+            'Start Xiaomi QR login',
+            'Cloud status',
+            'QR login help',
+            'Could not load timers',
+            'Could not save timers',
+        ]) {
             assert.deepEqual(Object.keys(dictionary[key]), languages);
         }
     });

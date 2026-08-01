@@ -172,7 +172,6 @@
     </style>
     <script type="text/javascript">
         var namespace;
-        var rooms = {}
         var active = false;
         var curToken;
         var authObj= null;
@@ -183,6 +182,47 @@
                 clearInterval(cloudAuthPollTimer);
                 cloudAuthPollTimer = null;
             }
+        }
+
+        function getTimerTableOptions(entries) {
+            return (entries || []).map(function (entry) {
+                var name = entry.name;
+                if (name && typeof name === 'object') {
+                    var language = typeof systemLang === 'string' ? systemLang : 'en';
+                    name = name[language] || name.en || Object.keys(name).map(function (language) {
+                        return name[language];
+                    })[0];
+                }
+                name = String(name || entry.id).replace(/[<>&'";\/]/g, ' ');
+                return entry.id + '/' + name;
+            }).join(';');
+        }
+
+        function loadTimers(onChange) {
+            sendTo(adapter + '.' + instance, 'getTimers', {}, function (result) {
+                if (!result || result.err) {
+                    showToast(_('ERROR: ') + (result && result.err ? result.err : _('Could not load timers')));
+                    return;
+                }
+
+                var channelOptions = getTimerTableOptions(result.channels);
+                var roomOptions = getTimerTableOptions(result.rooms);
+                $('#timer th[data-name=channels]').data('options', channelOptions);
+                $('#timer th[data-name=room]').data('options', roomOptions);
+                translateTable(channelOptions);
+
+                var timers = (result.timers || []).map(function (timer) {
+                    return {
+                        enabled: timer.enabled,
+                        minute: timer.minute,
+                        hour: timer.hour,
+                        day: timer.day || [],
+                        room: timer.rooms || [],
+                        channels: timer.channels || []
+                    };
+                });
+                values2table('timer', timers, onChange);
+            });
         }
 
         // the function loadSettings has to exist ...
@@ -346,92 +386,7 @@
             socket.emit('getState', 'system.adapter.' + adapter + '.' + instance + '.alive', function (err, state) {
                 active = /*common.enabled ||*/ (state && state.val);
             });
-            socket.emit('getObjectView', 'system', 'channel', {
-                startkey: namespace + 'rooms',
-                endkey: namespace + 'rooms.\u9999'
-            }, function (err, allChannels) {
-                let channelStr = '';
-                let channel;
-                if (allChannels) {
-                    for (var i in allChannels.rows) {
-                        channel = allChannels.rows[i].value;
-                        channelStr += ';' + channel._id.split('.').pop() + '/' + channel.common.name
-                    }
-                }
-                translateTable(channelStr);
-                if (channelStr.length) {
-                    $('#timer th[data-name=channels]').data('options', channelStr.slice(1));
-                } else {
-                    $('#timer th[data-name=channels]').remove();
-                }
-
-                socket.emit('getForeignStates', namespace + "timer.*", function (err, timerStates) {
-                    let timer = [];
-
-                    socket.emit('getObjectView', 'system', 'state', {
-                        startkey: namespace + 'timer.',
-                        endkey: namespace + 'timer.\u9999'
-                    }, function (err, timerObjs) {
-                        if (!err && timerObjs) {
-                            for (let t in timerObjs.rows) {
-                                let timerState = timerStates[timerObjs.rows[t].id];
-                                if (timerState)
-                                    timerState.channels = timerObjs.rows[t].value.native
-                                        .channels
-                            }
-                        }
-
-                        socket.emit('getObjectView', 'system', 'enum', {
-                            startkey: 'enum.rooms.',
-                            endkey: 'enum.rooms.' + '\u9999'
-                        }, function (err, res) {
-                            if (!err && res) {
-                                let filter = namespace + 'timer.'
-                                for (var i in res.rows) {
-                                    let room = res.rows[i].value;
-                                    rooms[room._id] = {
-                                        timer: [],
-                                        del: [],
-                                        add: []
-                                    };
-                                    for (let t in room.common.members) {
-                                        let id = room.common.members[t];
-                                        let timerState = timerStates[id];
-                                        if (timerState) {
-                                            timerState.room = timerState.room || [];
-                                            timerState.room.push(room._id);
-                                            rooms[room._id].timer.push(id)
-                                        } else if (id.indexOf(namespace) === 0) { // we use chance for housekeeping of zombie timer and rooms
-                                            if (id.indexOf('.timer.') === 0 ||
-                                                (id.indexOf('.multiRoomClean') === -1 &&
-                                                    id.indexOf('.rooms.') > 0 &&
-                                                    channelStr.indexOf(id.replace(/.+\.rooms\.([^.]+).*/, '$1')) === -1
-                                                )
-                                            ) {
-                                                rooms[room._id].del.push(id)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            for (let t in timerStates) {
-                                let terms = t.split('.').pop().split('_');
-                                terms.length > 2 && timer.push({
-                                    enabled: timerStates[t].val != -1,
-                                    minute: parseInt(terms[2], 10),
-                                    hour: parseInt(terms[1], 10),
-                                    day: terms[0].split(''),
-                                    room: timerStates[t].room || [],
-                                    channels: timerStates[t].channels || []
-                                })
-                            }
-
-                            values2table('timer', timer, onChange);
-                        })
-                    })
-                });
-            });
+            loadTimers(onChange);
             onChange(false);
         }
 
@@ -540,11 +495,9 @@
 
             let newTimerArray = table2values('timer');
             let timerList = {};
-            let timer;
-            let name;
             for (let t in newTimerArray) {
-                timer = newTimerArray[t];
-                name = timer.day.join('') + '_' + "0".concat(timer.hour).slice(-2) + '_' + "0".concat(timer.minute)
+                let timer = newTimerArray[t];
+                let name = timer.day.join('') + '_' + "0".concat(timer.hour).slice(-2) + '_' + "0".concat(timer.minute)
                     .slice(-2);
                 if (timerList[name])
                     return showMessage(_('same start time of 2 timer not possible'));
@@ -555,130 +508,23 @@
                 delete obj.MiDevice; // is not ,onger needed, but contains decryted token
             }
             
-            socket.emit('getForeignStates', namespace + 'timer.*', function (err, timerStates) {
-                if (!err && timerStates) {
-                    socket.emit('getObjectView', 'system', 'state', {
-                        startkey: namespace + 'timer.',
-                        endkey: namespace + 'timer.\u9999'
-                    }, function (err, timerObjs) {
-                        if (!err && timerObjs) {
-                            for (let t in timerObjs.rows) {
-                                let timer = timerList[timerObjs.rows[t].id.split('.').pop()];
-                                if (timer) {
-                                    if (timer.channels && timer.channels.length) {
-                                        timerObjs.rows[t].value.native.channels = timer.channels
-                                    } else if (timerObjs.rows[t].value.native.channels) {
-                                        delete timerObjs.rows[t].value.native.channels
-                                    } else {
-                                        continue;
-                                    }
-                                    timerObjs.rows[t].value.native.nextProcessTime = 0
-                                    socket.emit('setObject', timerObjs.rows[t].id, timerObjs.rows[t].value);
-                                    socket.emit('setState', timerObjs.rows[t].id, { ack: false });
-                                }
-                            }
-                        }
-
-                        var p;
-                        for (let t in timerStates) {
-                            let timerState = timerStates[t];
-                            name = t.split('.').pop();
-                            timer = timerList[name];
-                            if (!timer) {
-                                socket.emit('delObject', t);
-                                for (let r in rooms) {
-                                    p = rooms[r].timer.indexOf(t)
-                                    if (p >= 0) {
-                                        rooms[r].del.push(t);
-                                        delete rooms[r].timer[p]
-                                    }
-                                }
-                            } else {
-                                if (!timer.enabled && timerState.val != -1) {
-                                    socket.emit('setState', t, -1);
-                                }
-                                for (let r in rooms) {
-                                    p = rooms[r].timer.indexOf(t)
-                                    if (p >= 0) {
-                                        if (!timer.room.includes(r)) {
-                                            rooms[r].del.push(t);
-                                            delete rooms[r].timer[p]
-                                        }
-                                    } else if (timer.room.includes(r)) {
-                                        rooms[r].add.push(t);
-                                    }
-                                }
-                                delete timerList[name];
-                            }
-                        }
-
-                        for (let tn in timerList) {
-                            timer = timerList[tn];
-                            let stateId = namespace + 'timer.' + tn;
-
-                            socket.emit('setObject', stateId, {
-                                type: 'state',
-                                common: {
-                                    name: tn,
-                                    type: 'number',
-                                    role: 'value',
-                                    read: true,
-                                    write: true,
-                                    min: -1,
-                                    max: 2,
-                                    desc: 'timer',
-                                    states: {
-                                        '1': _('enabled'),
-                                        '-1': _('disabled'),
-                                        '0': _('Skip Timer'),
-                                        '2': _('start now')
-                                    }
-                                },
-                                native: {
-                                    channels: timer.channels
-                                }
-                            }, function (err, obj) {
-                                if (err) {
-                                    return showMessage(err, _('Error'), 'alert');
-                                }
-                                socket.emit('setState', stateId, {
-                                    val: timer.enabled ? '1' : -1,
-                                    ack: false
-                                });
-                            });
-                            for (let r in timer.room) {
-                                rooms[timer.room[r]].add.push(stateId);
-                            }
-                        }
-
-                        for (let r in rooms) {
-                            let room = rooms[r];
-                            if (room.add.length > 0 || room.del.length > 0) {
-                                socket.emit('getObject', r, function (err, obj) {
-                                    if (!err && obj) {
-                                        for (let t in room.del) {
-                                            p = obj.common.members.indexOf(room.del[t]);
-                                            if (p !== -1) {
-                                                obj.common.members.splice(p, 1);
-                                            }
-                                        }
-                                        obj.common.members = obj.common.members.concat(room.add);
-                                        room.timer = room.timer.concat(room.add);
-                                        room.del = [];
-                                        room.add = [];
-                                        obj.from = 'system.adapter.' + namespace;
-                                        obj.user = 'system.user.admin';
-                                        obj.ts = Date.now();
-                                        socket.emit('setObject', obj._id, obj);
-                                    }
-                                })
-                            }
-                        }
-
-                        callback(obj);
-                    });
+            let timers = newTimerArray.map(function (timer) {
+                return {
+                    enabled: !!timer.enabled,
+                    day: timer.day || [],
+                    hour: timer.hour,
+                    minute: timer.minute,
+                    rooms: timer.room || [],
+                    channels: timer.channels || []
+                };
+            });
+            sendTo(adapter + '.' + instance, 'saveTimers', { timers: timers }, function (result) {
+                if (!result || result.err) {
+                    showMessage(result && result.err ? result.err : _('Could not save timers'), _('Error'), 'alert');
+                    return;
                 }
-            })
+                callback(obj);
+            });
         }
     </script>
 </head>

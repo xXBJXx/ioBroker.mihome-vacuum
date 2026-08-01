@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const { tests } = require('@iobroker/testing');
 
@@ -17,5 +18,14 @@ describe('Runtime dependencies', () => {
         const packageJson = require('../package.json');
 
         assert.equal(packageJson.files.includes('!lib/**/*.test.js'), true);
+    });
+
+    it('runs JavaScript regression tests in CI independently from linting', () => {
+        const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'test-and-release.yml'), 'utf8');
+
+        assert.match(workflow, /^    regression-tests:/m);
+        assert.match(workflow, /^              run: npm run test:js$/m);
+        const regressionJob = workflow.slice(workflow.indexOf('    regression-tests:'), workflow.indexOf('    check-and-lint:'));
+        assert.doesNotMatch(regressionJob, /^        needs:/m);
     });
 });
