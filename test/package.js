@@ -14,6 +14,14 @@ describe('Runtime dependencies', () => {
         assert.equal(Object.prototype.hasOwnProperty.call(packageJson.devDependencies, 'axios'), false);
     });
 
+    it('declares the documented Node.js and js-controller minimum versions', () => {
+        const packageJson = require('../package.json');
+        const ioPackage = require('../io-package.json');
+
+        assert.equal(packageJson.engines.node, '>=18');
+        assert.equal(ioPackage.common.dependencies[0]['js-controller'], '>=5.0.19');
+    });
+
     it('excludes source-level tests from the runtime package', () => {
         const packageJson = require('../package.json');
 
