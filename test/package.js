@@ -10,8 +10,9 @@ describe('Runtime dependencies', () => {
     it('declares axios as a production dependency', () => {
         const packageJson = require('../package.json');
 
-        assert.equal(packageJson.dependencies.axios, '^1.11.0');
+        assert.equal(packageJson.dependencies.axios, '^1.19.0');
         assert.equal(Object.prototype.hasOwnProperty.call(packageJson.devDependencies, 'axios'), false);
+        assert.equal(packageJson.dependencies.qs, '6.15.3');
     });
 
     it('declares the documented Node.js and js-controller minimum versions', () => {
