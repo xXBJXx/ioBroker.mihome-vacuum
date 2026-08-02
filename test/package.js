@@ -61,20 +61,24 @@ describe('Runtime dependencies', () => {
     it('excludes source-level tests from the runtime package', () => {
         const packageJson = require('../package.json');
 
-        assert.equal(packageJson.files.includes('!lib/**/*.test.js'), true);
+        assert.equal(packageJson.files.includes('build/**/*.js'), true);
+        assert.equal(packageJson.files.includes('!build/types/**'), true);
+        assert.equal(packageJson.files.includes('lib/'), false);
+        assert.equal(packageJson.files.includes('main.js'), false);
     });
 
-    it('builds the TypeScript backend candidate without switching the runtime entry', () => {
+    it('builds and uses the TypeScript backend as the runtime entry', () => {
         const packageJson = require('../package.json');
         const buildConfig = require('../tsconfig.build.json');
 
-        assert.equal(packageJson.main, 'main.js');
+        assert.equal(packageJson.main, 'build/main.js');
         assert.equal(packageJson.scripts['build:backend'], 'tsc -p tsconfig.build.json');
         assert.match(packageJson.scripts['test:js'], /^npm run build:backend && mocha /);
         assert.equal(buildConfig.compilerOptions.rootDir, 'src');
         assert.equal(buildConfig.compilerOptions.outDir, 'build');
         assert.equal(buildConfig.compilerOptions.noEmit, false);
-        assert.equal(packageJson.files.some(entry => entry === 'build/' || entry === 'src/'), false);
+        assert.equal(packageJson.scripts.prepack, 'npm run build:backend');
+        assert.equal(packageJson.files.includes('src/'), false);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'tools.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'stockCommands.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'rrMapHeader.ts')), true);

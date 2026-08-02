@@ -15,7 +15,7 @@
     "name": "bluefox",
     "email": "dogafox@gmail.com"
   },
-  "main": "main.js",
+  "main": "build/main.js",
   "engines": {
     "node": ">=24"
   },
@@ -25,6 +25,7 @@
   },
   "scripts": {
     "build:backend": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build:backend",
     "test:js": "npm run build:backend && mocha --config test/mocha.custom.json \"{!(node_modules|test)/**/*.test.js,*.test.js,test/**/test!(PackageFiles|Startup).js}\"",
     "test:package": "mocha test/package --exit",
     "test:unit": "mocha test/unit --exit",
@@ -39,12 +40,11 @@
   "files": [
     "admin{,/!(src)/**}/!(tsconfig|tsconfig.*).json",
     "admin{,/!(src)/**}/*.{html,css,png,svg,jpg,js}",
-    "lib/",
-    "!lib/**/*.test.js",
+    "build/**/*.js",
+    "!build/types/**",
     "www/",
     "io-package.json",
-    "LICENSE",
-    "main.js"
+    "LICENSE"
   ],
   "optionalDependencies": {
     "canvas": "^3.2.3"
