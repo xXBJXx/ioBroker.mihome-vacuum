@@ -93,6 +93,7 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'featureManager.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'cleaningHistory.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'vacuumStatus.ts')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'vacuumCommandPayloads.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'miio.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'rrMap.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'timer.ts')), true);
@@ -105,9 +106,11 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'featureManager.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'cleaningHistory.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'vacuumStatus.ts')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'vacuumCommandPayloads.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'featureManager.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'cleaningHistory.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'vacuumStatus.js')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'vacuumCommandPayloads.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudCrypto.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudSession.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudProtocol.js')), true);
