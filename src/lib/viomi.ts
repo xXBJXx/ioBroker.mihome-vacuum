@@ -1,4 +1,4 @@
-import objectsModule from '../../lib/objects';
+import objectsModule from './objects';
 import type {
     ViomiAdapter,
     ViomiMiioClient,
