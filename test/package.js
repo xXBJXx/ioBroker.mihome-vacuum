@@ -100,6 +100,7 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'networkInfoProtocol.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'mapPointerProtocol.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'carpetModeProtocol.ts')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'roomMappingProtocol.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'miio.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'rrMap.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'timer.ts')), true);
@@ -119,6 +120,7 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'networkInfoProtocol.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'mapPointerProtocol.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'carpetModeProtocol.ts')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'roomMappingProtocol.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'featureManager.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'cleaningHistory.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'vacuumStatus.js')), true);
@@ -129,6 +131,7 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'networkInfoProtocol.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'mapPointerProtocol.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'carpetModeProtocol.js')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'roomMappingProtocol.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudCrypto.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudSession.js')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudProtocol.js')), true);
