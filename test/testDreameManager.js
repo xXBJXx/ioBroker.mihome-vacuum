@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const DreameManager = require('../lib/dreame');
+const TypedDreameManager = require('../build/lib/dreame');
 
 function createAdapter() {
     const states = new Map();
@@ -19,6 +20,10 @@ function createAdapter() {
         async setStateAsync(id, state) {
             states.set(id, state);
         },
+        async getStateAsync() {
+            return this.dockState;
+        },
+        dockState: /** @type {{val: unknown} | null} */ (null),
     };
 }
 
@@ -192,5 +197,197 @@ describe('DreameManager status polling', () => {
         assert.equal(callCount, 2);
         assert.equal(adapter.states.size, 0);
         assert.deepEqual(manager.globalTimeouts, {});
+    });
+});
+
+describe('DreameManager TypeScript migration', () => {
+    function createIdleManager(Manager, adapter, miio) {
+        const originalMain = Manager.prototype.main;
+        Manager.prototype.main = async () => undefined;
+        try {
+            return new Manager(adapter, miio);
+        } finally {
+            Manager.prototype.main = originalMain;
+        }
+    }
+
+    it('preserves every shared MIOT protocol catalog and polling property', async () => {
+        for (const catalog of [
+            'DreameWaterVolumes',
+            'DreameErrors',
+            'DreameState',
+            'DreameWashBaseState',
+            'DreameProperties',
+            'DreameActions',
+            'DreameBlockedObjects',
+        ]) {
+            assert.deepEqual(TypedDreameManager[catalog], DreameManager[catalog]);
+        }
+        const response = { result: [{ code: -1 }] };
+        const legacy = createIdleManager(DreameManager, createAdapter(), { sendMessage: async () => response });
+        const typed = createIdleManager(TypedDreameManager, createAdapter(), { sendMessage: async () => response });
+
+        assert.deepEqual(typed.PARAMS, legacy.PARAMS);
+        await waitForManager();
+        assert.equal(typed.washBaseAvailable, legacy.washBaseAvailable);
+        await legacy.close();
+        await typed.close();
+    });
+
+    it('preserves object creation, chunked polling, mappings, and special charging values', async () => {
+        const runScenario = async Manager => {
+            const adapter = createAdapter();
+            const objectIds = [];
+            adapter.setObjectNotExistsAsync = async id => {
+                objectIds.push(id);
+            };
+            let calls = 0;
+            const manager = new Manager(adapter, {
+                sendMessage: async (_method, params) => {
+                    calls++;
+                    if (calls === 1) {
+                        return { result: [{ code: -1 }] };
+                    }
+                    return {
+                        result: params.slice(0, 4).map((property, index) => ({
+                            ...property,
+                            code: 0,
+                            value: [3, 0, 81, 1][index],
+                        })),
+                    };
+                },
+            });
+            await waitForManager();
+            await manager.close();
+            return {
+                objectIds,
+                states: [...adapter.states],
+                calls,
+                logs: adapter.debugMessages,
+                timeouts: manager.globalTimeouts,
+            };
+        };
+
+        const legacy = await runScenario(DreameManager);
+        const typed = await runScenario(TypedDreameManager);
+
+        assert.deepEqual(typed, legacy);
+        assert.deepEqual(typed.states.find(([id]) => id === 'info.state'), ['info.state', { val: 10, ack: true }]);
+        assert.deepEqual(typed.states.find(([id]) => id === 'info.is_charging'), [
+            'info.is_charging',
+            { val: true, ack: true },
+        ]);
+    });
+
+    it('preserves property writes, actions, and their current acknowledgement contract', async () => {
+        const runScenario = async Manager => {
+            const adapter = createAdapter();
+            const calls = [];
+            const manager = createIdleManager(Manager, adapter, {
+                sendMessage: async (method, params) => {
+                    calls.push({ method, params });
+                    if (method === 'action') {
+                        return { result: { code: 0 } };
+                    }
+                    return { result: [{ code: 0 }] };
+                },
+            });
+            await waitForManager();
+            calls.length = 0;
+            manager.getStates = async () => undefined;
+
+            await manager.stateChange('mihome-vacuum.test.setting.water_grade', { val: '11', ack: false });
+            await manager.stateChange('mihome-vacuum.test.control.start', { val: true, ack: false });
+            await manager.stateChange('mihome-vacuum.test.control.find', { val: true, ack: false });
+            await manager.close();
+            return { calls, states: [...adapter.states] };
+        };
+
+        const legacy = await runScenario(DreameManager);
+        const typed = await runScenario(TypedDreameManager);
+
+        assert.deepEqual(typed, legacy);
+        assert.equal(typed.calls[0].method, 'set_properties');
+        assert.equal(typed.calls[0].params[0].value, 1);
+        assert.deepEqual(
+            typed.calls.slice(1).map(call => [call.params.siid, call.params.aiid]),
+            [
+                [2, 1],
+                [7, 1],
+            ],
+        );
+    });
+
+    it('preserves all wash-base command decisions and idempotent shutdown', async () => {
+        const runScenario = async Manager => {
+            const adapter = createAdapter();
+            const calls = [];
+            const manager = createIdleManager(Manager, adapter, {
+                sendMessage: async (method, params) => {
+                    calls.push({ method, params });
+                    return method === 'action' ? { result: { code: 0 } } : { result: [{ code: -1 }] };
+                },
+            });
+            await waitForManager();
+            calls.length = 0;
+            manager.washBaseAvailable = true;
+            manager.getStates = async () => undefined;
+
+            adapter.dockState = { val: 4 };
+            await manager.doCustomHandling('control.washMop');
+            adapter.dockState = { val: 1 };
+            await manager.doCustomHandling('control.pauseWashMop');
+            adapter.dockState = { val: 0 };
+            await manager.doCustomHandling('control.startDrying');
+            adapter.dockState = { val: 2 };
+            await manager.doCustomHandling('control.stopDrying');
+            await manager.close();
+            await manager.close();
+            return { calls, states: [...adapter.states], timeouts: manager.globalTimeouts };
+        };
+
+        const legacy = await runScenario(DreameManager);
+        const typed = await runScenario(TypedDreameManager);
+
+        assert.deepEqual(typed, legacy);
+        assert.deepEqual(
+            typed.calls.map(call => call.params.in[0].value),
+            ['1,1', '1,0', '3,0'],
+        );
+    });
+
+    it('stops the typed candidate during a pending chunk after a safely redacted probe failure', async () => {
+        const adapter = createAdapter();
+        let calls = 0;
+        /** @type {() => void} */
+        let markPollStarted = () => undefined;
+        const pollStarted = new Promise(resolve => {
+            markPollStarted = () => resolve(undefined);
+        });
+        /** @type {(value: unknown) => void} */
+        let releasePoll = _value => undefined;
+        const pollResult = new Promise(resolve => {
+            releasePoll = resolve;
+        });
+        const manager = new TypedDreameManager(adapter, {
+            sendMessage: async () => {
+                calls++;
+                if (calls === 1) {
+                    throw new Error('synthetic-sensitive-wash-probe');
+                }
+                markPollStarted();
+                return pollResult;
+            },
+        });
+
+        await pollStarted;
+        await manager.close();
+        releasePoll({ result: [] });
+        await waitForManager();
+
+        assert.equal(calls, 2);
+        assert.equal(adapter.states.size, 0);
+        assert.deepEqual(manager.globalTimeouts, {});
+        assert.equal(adapter.debugMessages.join('\n').includes('synthetic-sensitive-wash-probe'), false);
     });
 });
