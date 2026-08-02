@@ -1,5 +1,5 @@
 import objectsModule from './objects';
-import LegacyDreameManager from '../../lib/dreame';
+import { dreameProtocol as protocol } from './dreameProtocol';
 import type {
     DreameActionDefinition,
     DreameAdapter,
@@ -9,12 +9,10 @@ import type {
     DreameObjectsModule,
     DreamePropertyDefinition,
     DreamePropertyValue,
-    DreameProtocolModule,
     DreameState,
 } from '../types/dreame';
 
 const objects = objectsModule as DreameObjectsModule;
-const protocol = LegacyDreameManager as unknown as DreameProtocolModule;
 const {
     DreameWaterVolumes,
     DreameErrors,

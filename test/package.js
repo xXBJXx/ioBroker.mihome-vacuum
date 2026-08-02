@@ -7,6 +7,38 @@ const { tests } = require('@iobroker/testing');
 tests.packageFiles(path.join(__dirname, '..'));
 
 describe('Runtime dependencies', () => {
+    it('keeps every compiled relative require inside the runtime package', () => {
+        const buildDirectory = path.join(__dirname, '..', 'build');
+        const pendingDirectories = [buildDirectory];
+        const missingModules = [];
+
+        while (pendingDirectories.length) {
+            const directory = pendingDirectories.pop();
+            if (!directory) {
+                continue;
+            }
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+                const entryPath = path.join(directory, entry.name);
+                if (entry.isDirectory()) {
+                    pendingDirectories.push(entryPath);
+                    continue;
+                }
+                if (!entry.name.endsWith('.js')) {
+                    continue;
+                }
+                const source = fs.readFileSync(entryPath, 'utf8');
+                for (const match of source.matchAll(/require\(["'](\.{1,2}\/[^"']+)["']\)/g)) {
+                    const requiredPath = path.resolve(path.dirname(entryPath), match[1]);
+                    if (!fs.existsSync(requiredPath) && !fs.existsSync(`${requiredPath}.js`)) {
+                        missingModules.push(`${path.relative(buildDirectory, entryPath)} -> ${match[1]}`);
+                    }
+                }
+            }
+        }
+
+        assert.deepEqual(missingModules, []);
+    });
+
     it('declares axios as a production dependency', () => {
         const packageJson = require('../package.json');
 

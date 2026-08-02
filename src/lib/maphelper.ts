@@ -35,7 +35,7 @@ const adapterHelper: MapHelperAdapter = {
 
 function loadMapCreator(): MapCreatorModule | null {
     try {
-        return runtimeRequire('../../lib/mapCreator') as MapCreatorModule;
+        return runtimeRequire('./mapCreator') as MapCreatorModule;
     } catch (error) {
         console.warn(error);
         return null;
