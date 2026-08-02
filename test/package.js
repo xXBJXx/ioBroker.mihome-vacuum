@@ -77,7 +77,8 @@ describe('Runtime dependencies', () => {
         assert.equal(buildConfig.compilerOptions.rootDir, 'src');
         assert.equal(buildConfig.compilerOptions.outDir, 'build');
         assert.equal(buildConfig.compilerOptions.noEmit, false);
-        assert.equal(packageJson.scripts.prepack, 'npm run build:backend');
+        assert.equal(packageJson.scripts.build, 'npm run build:backend');
+        assert.equal('prepack' in packageJson.scripts, false);
         assert.equal(packageJson.files.includes('src/'), false);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'tools.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'stockCommands.ts')), true);
