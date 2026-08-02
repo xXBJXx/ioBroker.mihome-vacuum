@@ -89,6 +89,7 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'XiaomiCloudConnector.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'viomi.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'dreame.ts')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'vacuumProtocol.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'miio.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'rrMap.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'timer.ts')), true);
