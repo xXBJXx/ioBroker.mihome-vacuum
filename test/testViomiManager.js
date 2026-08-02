@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const ViomiManager = require('../lib/viomi');
+const TypedViomiManager = require('../build/lib/viomi');
 
 function createAdapter() {
     const states = new Map();
@@ -177,5 +178,139 @@ describe('ViomiManager status polling', () => {
         await manager.close();
 
         assert.equal(adapter.states.size, 0);
+    });
+});
+
+describe('ViomiManager TypeScript migration', () => {
+    function createIdleManager(Manager, adapter, miio) {
+        const originalMain = Manager.prototype.main;
+        Manager.prototype.main = async () => undefined;
+        try {
+            return new Manager(adapter, miio);
+        } finally {
+            Manager.prototype.main = originalMain;
+        }
+    }
+
+    it('preserves protocol catalogs and state definitions', async () => {
+        const legacy = createIdleManager(ViomiManager, createAdapter(), { sendMessage: async () => ({}) });
+        const typed = createIdleManager(TypedViomiManager, createAdapter(), { sendMessage: async () => ({}) });
+
+        assert.deepEqual(typed.ViomiDevices, legacy.ViomiDevices);
+        assert.deepEqual(typed.PARAMS, legacy.PARAMS);
+        assert.deepEqual(typed.ERROR_CODES, legacy.ERROR_CODES);
+        assert.deepEqual(typed.STATES, legacy.STATES);
+        assert.deepEqual(typed.FANSPEED, legacy.FANSPEED);
+        assert.deepEqual(typed.MODE, legacy.MODE);
+
+        await legacy.close();
+        await typed.close();
+    });
+
+    it('preserves polling objects, state values, and safe logs', async () => {
+        const result = [5, 3, 1, 2105, 80, 0, '0', 30, 42, 10, '0', 0, 1, 1, 2, 1, 1, 0, 1, 1, 0, 1];
+        const legacyAdapter = createAdapter();
+        const typedAdapter = createAdapter();
+        const legacyObjects = [];
+        const typedObjects = [];
+        legacyAdapter.setObjectNotExistsAsync = async id => {
+            legacyObjects.push(id);
+        };
+        typedAdapter.setObjectNotExistsAsync = async id => {
+            typedObjects.push(id);
+        };
+        const legacy = new ViomiManager(legacyAdapter, { sendMessage: async () => ({ result: [...result] }) });
+        const typed = new TypedViomiManager(typedAdapter, { sendMessage: async () => ({ result: [...result] }) });
+
+        await waitForPolling();
+        await legacy.close();
+        await typed.close();
+
+        assert.deepEqual(typedObjects, legacyObjects);
+        assert.deepEqual([...typedAdapter.states], [...legacyAdapter.states]);
+        assert.deepEqual(typed.lastProps, legacy.lastProps);
+        assert.deepEqual(typedAdapter.debugMessages, legacyAdapter.debugMessages);
+    });
+
+    it('preserves every supported command branch and acknowledgement', async () => {
+        const cases = [
+            ['suction_grade', 2, {}, 'set_suction', [2]],
+            ['water_grade', 3, {}, 'set_suction', [3]],
+            ['is_mop', 1, {}, 'set_mop', [1]],
+            ['light_state', true, {}, 'set_light', [1]],
+            ['start', true, { mode: 2 }, 'set_mode_withroom', [2, 1, 0]],
+            ['start', true, { mode: 0, is_mop: 2 }, 'set_mode_withroom', [3, 1, 0]],
+            ['start', true, { mode: 3 }, 'set_mode', [3, 1]],
+            ['pause', true, { mode: 0, is_mop: 1 }, 'set_mode_withroom', [1, 3, 0]],
+            ['pause', true, { mode: 3 }, 'set_mode', [3, 3]],
+            ['stop', true, { mode: 3 }, 'set_mode', [3, 0]],
+            ['stop', true, { mode: 0, is_mop: 4 }, 'set_pointclean', [0, 0, 0]],
+            ['stop', true, { mode: 0, is_mop: 0 }, 'set_mode', [0]],
+            ['return_dock', true, {}, 'set_charge', [1]],
+        ];
+
+        for (const [command, value, properties, expectedMethod, expectedParams] of cases) {
+            const legacyAdapter = createAdapter();
+            const typedAdapter = createAdapter();
+            const legacyCalls = [];
+            const typedCalls = [];
+            const legacy = createIdleManager(ViomiManager, legacyAdapter, {
+                sendMessage: async (method, params) => {
+                    legacyCalls.push({ method, params });
+                    return { result: ['ok'] };
+                },
+            });
+            const typed = createIdleManager(TypedViomiManager, typedAdapter, {
+                sendMessage: async (method, params) => {
+                    typedCalls.push({ method, params });
+                    return { result: ['ok'] };
+                },
+            });
+            Object.assign(legacy.lastProps, properties);
+            Object.assign(typed.lastProps, properties);
+            const id = `mihome-vacuum.0.control.${command}`;
+
+            await legacy.stateChange(id, { val: value, ack: false });
+            await typed.stateChange(id, { val: value, ack: false });
+
+            assert.deepEqual(legacyCalls, [{ method: expectedMethod, params: expectedParams }]);
+            assert.deepEqual(typedCalls, legacyCalls);
+            assert.deepEqual(typedAdapter.states.get(id), legacyAdapter.states.get(id));
+            await legacy.close();
+            await typed.close();
+        }
+    });
+
+    it('preserves ignored writes, blocked mode, and safe command failures', async () => {
+        const runScenario = async Manager => {
+            const warnings = [];
+            const adapter = createAdapter();
+            adapter.log.warn = message => {
+                warnings.push(String(message));
+                return undefined;
+            };
+            const calls = [];
+            const manager = createIdleManager(Manager, adapter, {
+                sendMessage: async (method, params) => {
+                    calls.push({ method, params });
+                    throw new Error('synthetic-sensitive-command-failure');
+                },
+            });
+            await manager.stateChange('mihome-vacuum.0.control.start', { val: true, ack: true });
+            manager.lastProps.mode = 4;
+            await manager.stateChange('mihome-vacuum.0.control.start', { val: true, ack: false });
+            await manager.stateChange('mihome-vacuum.0.control.unknown', { val: true, ack: false });
+            await manager.stateChange('mihome-vacuum.0.control.return_dock', { val: true, ack: false });
+            await manager.close();
+            await manager.close();
+            return { calls, warnings, states: [...adapter.states], timeouts: manager.globalTimeouts };
+        };
+
+        const legacy = await runScenario(ViomiManager);
+        const typed = await runScenario(TypedViomiManager);
+
+        assert.deepEqual(typed, legacy);
+        assert.deepEqual(typed.calls, [{ method: 'set_charge', params: [1] }]);
+        assert.equal(JSON.stringify(typed).includes('synthetic-sensitive-command-failure'), false);
     });
 });
