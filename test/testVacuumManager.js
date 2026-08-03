@@ -21,7 +21,7 @@ class FakeTimerManager {
     }
 }
 
-const VacuumManager = proxyquire('../lib/vacuum', {
+const VacuumManager = proxyquire('../build/lib/vacuum', {
     './maphelper': FakeMapHelper,
     './timerManager.js': FakeTimerManager,
     './roomManager': class {},

@@ -40,23 +40,55 @@ function createManager(Manager) {
     }
 }
 
-describe('VacuumManager complete TypeScript migration', () => {
-    it('preserves the complete public and internal prototype surface', () => {
-        const LegacyManager = loadManager('../lib/vacuum');
-        const TypedManager = loadManager('../build/lib/vacuum');
+describe('VacuumManager TypeScript runtime contract', () => {
+    it('exposes the complete reviewed public and internal prototype surface', () => {
+        const VacuumManager = loadManager('../build/lib/vacuum');
 
-        assert.deepEqual(
-            Object.getOwnPropertyNames(TypedManager.prototype).sort(),
-            Object.getOwnPropertyNames(LegacyManager.prototype).sort(),
-        );
+        assert.deepEqual(Object.getOwnPropertyNames(VacuumManager.prototype).sort(), [
+            'asyncForEach',
+            'checkFeaturesCarpet',
+            'checkFeaturesRoomMapping',
+            'clearQueue',
+            'close',
+            'constructor',
+            'createHtmlTable',
+            'delObj',
+            'delay',
+            'getLogEntries',
+            'getMapData',
+            'getMapPointer',
+            'getMultiMapsList',
+            'getOnlyAtStart',
+            'getSetNetwork',
+            'getStates',
+            'init',
+            'initStates',
+            'isEquivalent',
+            'main',
+            'onMessage',
+            'parseCleaningRecords',
+            'parseCleaningSummary',
+            'parseGoTo',
+            'parseStatus',
+            'push',
+            'setGetCarpetMode',
+            'setGetCleanSummary',
+            'setGetConsumable',
+            'setGetSoundVolume',
+            'setGetStatus',
+            'setRemoteState',
+            'startCleaning',
+            'stateChange',
+            'stopCleaning',
+            'updateQueue',
+        ]);
     });
 
-    it('preserves initial generic-manager state without narrowing to one model', async () => {
-        const LegacyManager = loadManager('../lib/vacuum');
-        const TypedManager = loadManager('../build/lib/vacuum');
-        const legacy = createManager(LegacyManager);
-        const typed = createManager(TypedManager);
-        const selectState = manager => ({
+    it('initializes the generic manager without narrowing it to one vacuum model', async () => {
+        const VacuumManager = loadManager('../build/lib/vacuum');
+        const manager = createManager(VacuumManager);
+
+        assert.deepEqual({
             device: manager.device,
             vacuum: manager.vacuum,
             carpetModeSettings: manager.carpetModeSettings,
@@ -66,10 +98,28 @@ describe('VacuumManager complete TypeScript migration', () => {
             queue: manager.queue,
             mapEnable: manager.mapEnable,
             mapReady: manager.mapReady,
+        }, {
+            device: 'roborock.vacuum.synthetic',
+            vacuum: {
+                modell: 'roborock.vacuum.synthetic',
+                features: { carpetMode: null, roomMapping: null },
+                lastGoto: [],
+                lastZone: [[]],
+            },
+            carpetModeSettings: {
+                enabled: 1,
+                integral: 450,
+                high: 500,
+                low: 400,
+                stall_time: 10,
+            },
+            closed: false,
+            Error: false,
+            cleanActiveState: 0,
+            queue: [],
+            mapEnable: undefined,
+            mapReady: { login: false, mappointer: false },
         });
-
-        assert.deepEqual(selectState(typed), selectState(legacy));
-        await legacy.close();
-        await typed.close();
+        await manager.close();
     });
 });
