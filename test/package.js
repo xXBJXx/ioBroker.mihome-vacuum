@@ -102,6 +102,7 @@ describe('Runtime dependencies', () => {
     it('builds and uses the TypeScript backend as the runtime entry', () => {
         const packageJson = require('../package.json');
         const buildConfig = require('../tsconfig.build.json');
+        const checkConfigSource = fs.readFileSync(path.join(__dirname, '..', 'tsconfig.check.json'), 'utf8');
 
         assert.equal(packageJson.main, 'build/main.js');
         assert.equal(packageJson.scripts['build:backend'], 'tsc -p tsconfig.build.json');
@@ -109,7 +110,12 @@ describe('Runtime dependencies', () => {
         assert.equal(buildConfig.compilerOptions.rootDir, 'src');
         assert.equal(buildConfig.compilerOptions.outDir, 'build');
         assert.equal(buildConfig.compilerOptions.noEmit, false);
-        assert.equal(packageJson.scripts.build, 'npm run build:backend');
+        assert.equal(packageJson.scripts['build:admin'], 'vite build --config src-admin/vite.config.ts');
+        assert.equal(packageJson.scripts['check:admin'], 'tsc --noEmit -p src-admin/tsconfig.json');
+        assert.equal(packageJson.scripts.build, 'npm run build:backend && npm run build:admin');
+        assert.equal(packageJson.scripts.check, 'tsc --noEmit -p tsconfig.check.json && npm run check:admin');
+        assert.match(checkConfigSource, /"admin\/"/);
+        assert.match(checkConfigSource, /"src-admin\/"/);
         assert.equal(packageJson.scripts.prepublishOnly, 'npm run build');
         assert.equal(packageJson.scripts['test:package'], 'npm run build && mocha test/package --exit');
         assert.equal(
@@ -271,12 +277,15 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', '.github', 'auto-merge.yml')), false);
     });
 
-    it('ships only the declared Materialize configuration page', () => {
+    it('keeps Materialize active while shipping the transitional React admin build', () => {
         const ioPackage = require('../io-package.json');
         const adminDirectory = path.join(__dirname, '..', 'admin');
 
         assert.equal(ioPackage.common.adminUI.config, 'materialize');
         assert.equal(fs.existsSync(path.join(adminDirectory, 'index_m.html')), true);
-        assert.equal(fs.existsSync(path.join(adminDirectory, 'index.html')), false);
+        assert.equal(fs.existsSync(path.join(adminDirectory, 'index.html')), true);
+        assert.equal(fs.existsSync(path.join(adminDirectory, 'assets', 'index.js')), true);
+        assert.equal(fs.existsSync(path.join(adminDirectory, 'assets', 'index.css')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src-admin', 'src', 'App.tsx')), true);
     });
 });

@@ -13,7 +13,9 @@
 	],
 	"exclude": [
 		"**/build",
+		"admin/",
 		"node_modules/",
+		"src-admin/",
 		"widgets/",
 		"gulpfile.js"
 	]

@@ -59,6 +59,9 @@ try {
     const archivePath = path.join(packDirectory, archive.filename);
     const packagedPaths = new Set(archive.files.map(file => file.path.replaceAll('\\', '/')));
     const requiredPaths = [
+        'admin/assets/index.css',
+        'admin/assets/index.js',
+        'admin/index.html',
         'admin/index_m.html',
         'admin/words.js',
         'build/main.js',
@@ -77,6 +80,7 @@ try {
             file === 'main.js' ||
             file.startsWith('lib/') ||
             file.startsWith('src/') ||
+            file.startsWith('src-admin/') ||
             file.startsWith('test/') ||
             file.startsWith('build/types/') ||
             file.endsWith('.d.ts') ||

@@ -59,3 +59,26 @@ describe('Materialize admin security', () => {
         }
     });
 });
+
+describe('React admin security', () => {
+    const appSource = fs.readFileSync(path.join(__dirname, '..', 'src-admin', 'src', 'App.tsx'), 'utf8');
+
+    it('keeps discovered tokens out of select values and labels', () => {
+        assert.match(appSource, /value=\{index\}/);
+        assert.match(appSource, /device\.model \|\| I18n\.t\('Unknown device'\)/);
+        assert.match(appSource, /device\.localip \? ` – \$\{device\.localip\}` : ''/);
+        assert.doesNotMatch(appSource, /value=\{JSON\.stringify\(device\)\}/);
+        assert.doesNotMatch(appSource, /device\.token\}\s*<\/MenuItem>/);
+    });
+
+    it('polls QR authentication safely and cleans up its timer', () => {
+        assert.match(appSource, /setInterval\(\(\) => void this\.updateCloudAuth\(\), 3_000\)/);
+        assert.match(appSource, /clearInterval\(this\.authPollTimer\)/);
+        assert.match(appSource, /this\.state\.auth\.status !== 'authenticated'/);
+    });
+
+    it('uses the authenticated discovery message without legacy credentials', () => {
+        assert.match(appSource, /'discovery',\s*\{ authObj: \{\}, server: this\.state\.native\.server \}/);
+        assert.doesNotMatch(appSource, /authObj:\s*\{[^}]*password/);
+    });
+});
