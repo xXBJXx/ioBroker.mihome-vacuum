@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
-const RoomManager = require('../lib/roomManager');
-const TypedRoomManager = require('../build/lib/roomManager');
+const RoomManager = require('../build/lib/roomManager');
+
+function asRoomAdapter(adapter) {
+    return /** @type {import('../src/types/room').RoomAdapter} */ (/** @type {unknown} */ (adapter));
+}
 
 describe('RoomManager object lookup', () => {
     it('normalizes persisted full room IDs and creates the state object before writing it', async () => {
@@ -22,12 +25,13 @@ describe('RoomManager object lookup', () => {
             },
         };
 
-        new RoomManager(adapter, {
+        new RoomManager(asRoomAdapter(adapter), {
             cleanRoom: 'Clean room',
             cleanRooms: 'Clean rooms',
             loadRooms: 'Load rooms',
             cleanMultiRooms: 'Clean multiple rooms',
             addRoom: 'Add room',
+            notAvailable: 'not available',
         });
         await new Promise(resolve => setImmediate(resolve));
 
@@ -55,12 +59,13 @@ describe('RoomManager object lookup', () => {
                 states.set(id, { value, ack });
             },
         };
-        const manager = new RoomManager(adapter, {
+        const manager = new RoomManager(asRoomAdapter(adapter), {
             cleanRoom: 'Clean room',
             cleanRooms: 'Clean rooms',
             loadRooms: 'Load rooms',
             cleanMultiRooms: 'Clean multiple rooms',
             addRoom: 'Add room',
+            notAvailable: 'not available',
         });
         const updatedRooms = [];
         manager.updateRoomStates = async id => {
@@ -100,11 +105,12 @@ describe('RoomManager object lookup', () => {
             loadRooms: 'Load rooms',
             cleanMultiRooms: 'Clean multiple rooms',
             addRoom: 'Add room',
+            notAvailable: 'not available',
         };
         const firstAdapter = createAdapter('mihome-vacuum.first');
         const secondAdapter = createAdapter('mihome-vacuum.second');
-        const firstManager = new RoomManager(firstAdapter, i18n);
-        new RoomManager(secondAdapter, i18n);
+        const firstManager = new RoomManager(asRoomAdapter(firstAdapter), i18n);
+        new RoomManager(asRoomAdapter(secondAdapter), i18n);
 
         await new Promise(resolve => firstManager.findMapIndexByRoom('enum.rooms.test', resolve));
 
@@ -137,14 +143,15 @@ describe('RoomManager object lookup', () => {
                 );
             },
         };
-        const manager = new RoomManager(adapter, {
+        const manager = new RoomManager(asRoomAdapter(adapter), {
             cleanRoom: 'Clean room',
             cleanRooms: 'Clean rooms',
             loadRooms: 'Load rooms',
             cleanMultiRooms: 'Clean multiple rooms',
             addRoom: 'Add room',
+            notAvailable: 'not available',
         });
-        const legacyExpected = Object.keys(objects).filter(
+        const expected = Object.keys(objects).filter(
             id =>
                 id.startsWith(ownPrefix) &&
                 id.endsWith('.mapIndex') &&
@@ -154,7 +161,7 @@ describe('RoomManager object lookup', () => {
         const actual = await new Promise(resolve => manager.findMapIndexByRoom('enum.rooms.living', resolve));
 
         assert.deepEqual(requestedPatterns, ['mihome-vacuum.test.rooms.*', 'mihome-vacuum.test.rooms.*']);
-        assert.deepEqual(actual, legacyExpected);
+        assert.deepEqual(actual, expected);
         assert.deepEqual(actual, ['mihome-vacuum.test.rooms.living.mapIndex']);
 
         let statePattern;
@@ -173,7 +180,7 @@ describe('RoomManager object lookup', () => {
     });
 });
 
-describe('RoomManager TypeScript migration', () => {
+describe('RoomManager TypeScript runtime', () => {
     const translations = {
         cleanRoom: 'Clean room',
         cleanRooms: 'Clean rooms',
@@ -253,21 +260,17 @@ describe('RoomManager TypeScript migration', () => {
 
     const settle = () => new Promise(resolve => setImmediate(resolve));
 
-    it('preserves constructor objects and manual room creation', async () => {
+    it('creates constructor objects and a manual room', async () => {
         const optionalObjects = {
             'control.fan_power': { common: { name: 'Fan', type: 'number', role: 'level' } },
         };
-        const legacy = createAdapter({ optionalObjects });
-        const typed = createAdapter({ optionalObjects });
-        const legacyManager = new RoomManager(legacy.adapter, translations);
-        const typedManager = new TypedRoomManager(typed.adapter, translations);
+        const runtime = createAdapter({ optionalObjects });
+        const manager = new RoomManager(asRoomAdapter(runtime.adapter), translations);
 
-        await legacyManager.createRoom('manual_zone', '[1,2,3,4]');
-        await typedManager.createRoom('manual_zone', '[1,2,3,4]');
+        await manager.createRoom('manual_zone', '[1,2,3,4]');
 
-        assert.deepEqual(typed.operations, legacy.operations);
         assert.equal(
-            typed.operations.some(
+            runtime.operations.some(
                 operation =>
                     operation[0] === 'setObjectNotExistsAsync' &&
                     operation[1] === 'rooms.manual_zone.mapIndex' &&
@@ -275,9 +278,26 @@ describe('RoomManager TypeScript migration', () => {
             ),
             true,
         );
+        assert.equal(
+            runtime.operations.some(
+                operation =>
+                    operation[0] === 'setStateAsync' &&
+                    operation[1] === 'rooms.manual_zone.mapIndex' &&
+                    operation[2] === '[1,2,3,4]',
+            ),
+            true,
+        );
+        assert.equal(
+            runtime.operations.some(
+                operation =>
+                    operation[0] === 'setObjectNotExistsAsync' &&
+                    operation[1] === 'rooms.manual_zone.roomFanPower',
+            ),
+            true,
+        );
     });
 
-    it('preserves device mappings and generated room states', async () => {
+    it('processes device mappings and creates missing room states', async () => {
         const roomObjects = [
             {
                 _id: 'mihome-vacuum.test.rooms.living-cloud-id',
@@ -287,10 +307,8 @@ describe('RoomManager TypeScript migration', () => {
             },
         ];
         const options = { roomObjects };
-        const legacy = createAdapter(options);
-        const typed = createAdapter(options);
-        const legacyManager = new RoomManager(legacy.adapter, translations);
-        const typedManager = new TypedRoomManager(typed.adapter, translations);
+        const runtime = createAdapter(options);
+        const manager = new RoomManager(asRoomAdapter(runtime.adapter), translations);
         const response = {
             result: [
                 [16, 'living-cloud-id'],
@@ -299,18 +317,45 @@ describe('RoomManager TypeScript migration', () => {
             ],
         };
 
-        legacyManager.processRoomMaping(structuredClone(response));
-        typedManager.processRoomMaping(structuredClone(response));
+        manager.processRoomMaping(structuredClone(response));
         await settle();
         await settle();
 
-        legacyManager.processRoomMaping({ result: null });
-        typedManager.processRoomMaping({ result: null });
-
-        assert.deepEqual(typed.operations, legacy.operations);
+        const operationsBeforeEmptyMapping = runtime.operations.length;
+        assert.equal(manager.processRoomMaping({ result: null }), undefined);
+        assert.equal(runtime.operations.length > operationsBeforeEmptyMapping, true);
+        assert.equal(
+            runtime.operations.slice(operationsBeforeEmptyMapping).some(
+                operation =>
+                    operation[0] === 'setStateChanged' &&
+                    operation[1] === 'mihome-vacuum.test.rooms.living-cloud-id.mapIndex' &&
+                    operation[2] === 'not available',
+            ),
+            true,
+        );
+        assert.equal(
+            runtime.operations.some(
+                operation =>
+                    operation[0] === 'setStateChanged' &&
+                    operation[1] === 'mihome-vacuum.test.rooms.living-cloud-id.mapIndex' &&
+                    operation[2] === 16,
+            ),
+            true,
+        );
+        assert.equal(
+            runtime.operations.some(
+                operation =>
+                    operation[0] === 'setObjectNotExistsAsync' && operation[1] === 'rooms.kitchen-cloud-id',
+            ),
+            true,
+        );
+        assert.equal(
+            runtime.operations.some(operation => operation[0] === 'warn' && String(operation[1]).includes('segment 18')),
+            true,
+        );
     });
 
-    it('preserves segment, zone, and validation routing', () => {
+    it('routes segments and zones while reporting invalid selections', () => {
         const namespace = 'mihome-vacuum.test';
         const ids = [
             `${namespace}.rooms.living.mapIndex`,
@@ -328,18 +373,35 @@ describe('RoomManager TypeScript migration', () => {
             [ids[4]]: { val: true },
             [ids[5]]: { val: 10 },
         };
-        const legacy = createAdapter({ foreignStates });
-        const typed = createAdapter({ foreignStates });
-        const legacyManager = new RoomManager(legacy.adapter, translations);
-        const typedManager = new TypedRoomManager(typed.adapter, translations);
+        const runtime = createAdapter({ foreignStates });
+        const manager = new RoomManager(asRoomAdapter(runtime.adapter), translations);
 
-        legacyManager.cleanRooms(ids);
-        typedManager.cleanRooms(ids);
+        manager.cleanRooms(ids);
 
-        assert.deepEqual(typed.operations, legacy.operations);
+        assert.deepEqual(
+            runtime.operations.filter(operation => operation[0] === 'sendTo'),
+            [
+                [
+                    'sendTo',
+                    namespace,
+                    'cleanSegments',
+                    {
+                        segments: [16, '17'],
+                        channels: [`${namespace}.rooms.living`, `${namespace}.rooms.kitchen`],
+                    },
+                ],
+                [
+                    'sendTo',
+                    namespace,
+                    'cleanZone',
+                    { zones: ['[1,2,3,4]'], channels: [`${namespace}.rooms.zone`] },
+                ],
+            ],
+        );
+        assert.equal(runtime.operations.filter(operation => operation[0] === 'error').length, 3);
     });
 
-    it('preserves enum and native-channel room selection', () => {
+    it('combines enum and native-channel room selection', () => {
         const namespace = 'mihome-vacuum.test';
         const timerId = `${namespace}.timer.1_12_00`;
         const livingMap = `${namespace}.rooms.living.mapIndex`;
@@ -370,19 +432,26 @@ describe('RoomManager TypeScript migration', () => {
             },
         };
         const options = { foreignObjects, foreignStates, stateSets };
-        const legacy = createAdapter(options);
-        const typed = createAdapter(options);
-        const legacyManager = new RoomManager(legacy.adapter, translations);
-        const typedManager = new TypedRoomManager(typed.adapter, translations);
-        let legacyChannels;
-        let typedChannels;
+        const runtime = createAdapter(options);
+        const manager = new RoomManager(asRoomAdapter(runtime.adapter), translations);
+        let channels;
 
-        legacyManager.cleanRoomsFromState(timerId);
-        typedManager.cleanRoomsFromState(timerId);
-        legacyManager.findChannelsByMapIndex([16], channels => (legacyChannels = channels));
-        typedManager.findChannelsByMapIndex([16], channels => (typedChannels = channels));
+        manager.cleanRoomsFromState(timerId);
+        manager.findChannelsByMapIndex([16], result => (channels = result));
 
-        assert.deepEqual(typedChannels, legacyChannels);
-        assert.deepEqual(typed.operations, legacy.operations);
+        assert.deepEqual(channels, [`${namespace}.rooms.living`]);
+        assert.equal(
+            runtime.operations.some(
+                operation =>
+                    operation[0] === 'sendTo' &&
+                    operation[2] === 'cleanSegments' &&
+                    JSON.stringify(operation[3]) ===
+                        JSON.stringify({
+                            segments: [17, 16],
+                            channels: [`${namespace}.rooms.kitchen`, `${namespace}.rooms.living`],
+                        }),
+            ),
+            true,
+        );
     });
 });

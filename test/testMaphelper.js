@@ -1,7 +1,6 @@
 const assert = require('node:assert/strict');
 const proxyquire = require('proxyquire').noCallThru().noPreserveCache();
-const MapHelper = require('../lib/maphelper');
-const TypedMapHelper = require('../build/lib/maphelper');
+const MapHelper = require('../build/lib/maphelper');
 
 describe('MapHelper logging', () => {
     function createAdapter() {
@@ -38,16 +37,17 @@ describe('MapHelper logging', () => {
 
         mapHelper.config.mimap = true;
         mapHelper.getMapURL = async () => ({
+            message: 'ok',
             result: {
                 expires_time: Math.floor(Date.now() / 1000) + 300,
                 url: sensitiveLocationMarker,
             },
         });
-        mapHelper.getMapBase64 = async () => 'map-data';
+        mapHelper.getMapBase64 = async () => ['map-data', [], undefined, undefined];
 
         const result = await mapHelper.updateMap(`map-${Date.now()}`);
 
-        assert.equal(result, 'map-data');
+        assert.deepEqual(result, ['map-data', [], undefined, undefined]);
         assert.equal(debugMessages.some(message => message.includes(sensitiveLocationMarker)), false);
     });
 
@@ -92,7 +92,7 @@ describe('MapHelper logging', () => {
         mapHelper.cloudConnector.executeEncryptedApiCall = async () => {
             throw new Error('synthetic map request failure');
         };
-        mapHelper.cloudConnector.refreshToken = async () => {
+        /** @type {any} */ (mapHelper.cloudConnector).refreshToken = async () => {
             refreshCalls++;
             return { err: '' };
         };
@@ -114,6 +114,7 @@ describe('MapHelper logging', () => {
         firstMapHelper.getMapURL = async () => {
             firstUrlRequests++;
             return {
+                message: 'ok',
                 result: {
                     expires_time: Math.floor(Date.now() / 1000) + 300,
                     url: 'first-instance-map-url',
@@ -123,23 +124,29 @@ describe('MapHelper logging', () => {
         secondMapHelper.getMapURL = async () => {
             secondUrlRequests++;
             return {
+                message: 'ok',
                 result: {
                     expires_time: Math.floor(Date.now() / 1000) + 300,
                     url: 'second-instance-map-url',
                 },
             };
         };
-        firstMapHelper.getMapBase64 = async url => url;
-        secondMapHelper.getMapBase64 = async url => url;
+        firstMapHelper.getMapBase64 = async url => [url, [], undefined, undefined];
+        secondMapHelper.getMapBase64 = async url => [url, [], undefined, undefined];
 
-        assert.equal(await firstMapHelper.updateMap(mapName), 'first-instance-map-url');
-        assert.equal(await secondMapHelper.updateMap(mapName), 'second-instance-map-url');
+        assert.deepEqual(await firstMapHelper.updateMap(mapName), ['first-instance-map-url', [], undefined, undefined]);
+        assert.deepEqual(await secondMapHelper.updateMap(mapName), [
+            'second-instance-map-url',
+            [],
+            undefined,
+            undefined,
+        ]);
         assert.equal(firstUrlRequests, 1);
         assert.equal(secondUrlRequests, 1);
     });
 });
 
-describe('MapHelper TypeScript migration', () => {
+describe('MapHelper TypeScript runtime', () => {
     function createObservedAdapter(config = {}) {
         /** @type {Record<'debug' | 'info' | 'warn' | 'error', string[]>} */
         const logs = { debug: [], info: [], warn: [], error: [] };
@@ -157,7 +164,7 @@ describe('MapHelper TypeScript migration', () => {
         };
     }
 
-    it('preserves configuration parsing and isolated URL caches', async () => {
+    it('parses configuration and keeps URL caches isolated', async () => {
         const config = {
             devices: JSON.stringify({ did: 'synthetic-device-id' }),
             server: 'de',
@@ -166,55 +173,59 @@ describe('MapHelper TypeScript migration', () => {
             valetudo_enable: false,
             newmap: true,
         };
-        const legacyAdapter = createObservedAdapter(structuredClone(config));
-        const typedAdapter = createObservedAdapter(structuredClone(config));
-        const legacy = new MapHelper({}, legacyAdapter.adapter);
-        const typed = new TypedMapHelper({}, typedAdapter.adapter);
+        const firstAdapter = createObservedAdapter(structuredClone(config));
+        const secondAdapter = createObservedAdapter(structuredClone(config));
+        const first = new MapHelper({}, firstAdapter.adapter);
+        const second = new MapHelper({}, secondAdapter.adapter);
 
         try {
-            assert.deepEqual(typed.config, legacy.config);
-            legacy.mapUrlCache.set('legacy-only', { expires: 1, url: 'legacy-url' });
-            typed.mapUrlCache.set('typed-only', { expires: 1, url: 'typed-url' });
-            assert.equal(typed.mapUrlCache.has('legacy-only'), false);
-            assert.equal(legacy.mapUrlCache.has('typed-only'), false);
+            assert.deepEqual(first.config, {
+                username: '',
+                password: '',
+                deviceId: 'synthetic-device-id',
+                server: 'de',
+                valetudo: false,
+                mimap: false,
+                ip: '192.0.2.1',
+                COLOR_OPTIONS: {
+                    FLOORCOLOR: undefined,
+                    WALLCOLOR: undefined,
+                    PATHCOLOR: undefined,
+                    ROBOT: undefined,
+                    newmap: true,
+                },
+            });
+            first.mapUrlCache.set('first-only', { expires: 1, url: 'first-url' });
+            second.mapUrlCache.set('second-only', { expires: 1, url: 'second-url' });
+            assert.equal(second.mapUrlCache.has('first-only'), false);
+            assert.equal(first.mapUrlCache.has('second-only'), false);
         } finally {
-            await legacy.shutdown();
-            await typed.shutdown();
+            await first.shutdown();
+            await second.shutdown();
         }
     });
 
-    it('preserves fresh and cached map URL routing without exposing locations', async () => {
-        const legacyAdapter = createObservedAdapter({ server: 'de' });
-        const typedAdapter = createObservedAdapter({ server: 'de' });
-        const legacy = new MapHelper({}, legacyAdapter.adapter);
-        const typed = new TypedMapHelper({}, typedAdapter.adapter);
+    it('routes fresh and cached map URLs without exposing locations', async () => {
+        const observed = createObservedAdapter({ server: 'de' });
+        const mapHelper = new MapHelper({}, observed.adapter);
         const sensitiveUrl = 'SENSITIVE_TYPED_MAP_URL';
-        let legacyRequests = 0;
-        let typedRequests = 0;
+        let requests = 0;
 
         try {
-            legacy.config.mimap = true;
-            typed.config.mimap = true;
-            legacy.getMapURL = async () => {
-                legacyRequests++;
-                return { result: { expires_time: 9999999999, url: sensitiveUrl } };
-            };
-            typed.getMapURL = async () => {
-                typedRequests++;
+            mapHelper.config.mimap = true;
+            mapHelper.getMapURL = async () => {
+                requests++;
                 return { message: 'ok', result: { expires_time: 9999999999, url: sensitiveUrl } };
             };
-            legacy.getMapBase64 = async url => [url, [], undefined, undefined];
-            typed.getMapBase64 = async url => [url, [], undefined, undefined];
+            mapHelper.getMapBase64 = async url => [url, [], undefined, undefined];
 
-            assert.deepEqual(await typed.updateMap('same-map'), await legacy.updateMap('same-map'));
-            assert.deepEqual(await typed.updateMap('same-map'), await legacy.updateMap('same-map'));
-            assert.equal(typedRequests, legacyRequests);
-            assert.equal(typedRequests, 1);
-            assert.equal(JSON.stringify(typedAdapter.logs).includes(sensitiveUrl), false);
-            assert.equal(JSON.stringify(legacyAdapter.logs).includes(sensitiveUrl), false);
+            const expected = [sensitiveUrl, [], undefined, undefined];
+            assert.deepEqual(await mapHelper.updateMap('same-map'), expected);
+            assert.deepEqual(await mapHelper.updateMap('same-map'), expected);
+            assert.equal(requests, 1);
+            assert.equal(JSON.stringify(observed.logs).includes(sensitiveUrl), false);
         } finally {
-            await legacy.shutdown();
-            await typed.shutdown();
+            await mapHelper.shutdown();
         }
     });
 
@@ -229,31 +240,20 @@ describe('MapHelper TypeScript migration', () => {
             }
             shutdown() {}
         };
-        const LegacyWithMocks = proxyquire('../lib/maphelper', {
+        const MapHelperWithMocks = proxyquire('../build/lib/maphelper', {
             axios: { default: axiosStub, ...axiosStub },
             './XiaomiCloudConnector': FakeCloudConnector,
         });
-        const TypedWithMocks = proxyquire('../build/lib/maphelper', {
-            axios: { default: axiosStub, ...axiosStub },
-            './XiaomiCloudConnector': FakeCloudConnector,
-        });
-        const legacyAdapter = createObservedAdapter({});
-        const typedAdapter = createObservedAdapter({});
-        const legacy = new LegacyWithMocks({}, legacyAdapter.adapter);
-        const typed = new TypedWithMocks({}, typedAdapter.adapter);
+        const observed = createObservedAdapter({});
+        const mapHelper = new MapHelperWithMocks({}, observed.adapter);
 
         try {
-            await assert.rejects(legacy.getRawMapData(), error => !String(error).includes(sensitiveMarker));
-            await assert.rejects(typed.getRawMapData(), error => !String(error).includes(sensitiveMarker));
-            legacy.cloudConnector.executeEncryptedApiCall = async () => ({ message: sensitiveMarker });
-            typed.cloudConnector.executeEncryptedApiCall = async () => ({ message: sensitiveMarker });
-            await assert.rejects(legacy.getMapURL('map'), error => !String(error).includes(sensitiveMarker));
-            await assert.rejects(typed.getMapURL('map'), error => !String(error).includes(sensitiveMarker));
-            assert.equal(JSON.stringify(legacyAdapter.logs).includes(sensitiveMarker), false);
-            assert.equal(JSON.stringify(typedAdapter.logs).includes(sensitiveMarker), false);
+            await assert.rejects(mapHelper.getRawMapData(), error => !String(error).includes(sensitiveMarker));
+            mapHelper.cloudConnector.executeEncryptedApiCall = async () => ({ message: sensitiveMarker });
+            await assert.rejects(mapHelper.getMapURL('map'), error => !String(error).includes(sensitiveMarker));
+            assert.equal(JSON.stringify(observed.logs).includes(sensitiveMarker), false);
         } finally {
-            await legacy.shutdown();
-            await typed.shutdown();
+            await mapHelper.shutdown();
         }
     });
 });

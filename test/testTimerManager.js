@@ -1,7 +1,10 @@
 const assert = require('node:assert/strict');
 const sinon = require('sinon');
-const TimerManager = require('../lib/timerManager');
-const TypedTimerManager = require('../build/lib/timerManager');
+const TimerManager = require('../build/lib/timerManager');
+
+function asTimerAdapter(adapter) {
+    return /** @type {import('../src/types/timer').TimerAdapter} */ (/** @type {unknown} */ (adapter));
+}
 
 describe('TimerManager lifecycle', () => {
     it('keeps delayed initialization isolated between instances', async () => {
@@ -31,8 +34,8 @@ describe('TimerManager lifecycle', () => {
         };
         const firstAdapter = createAdapter();
         const secondAdapter = createAdapter();
-        const firstManager = new TimerManager(firstAdapter, i18n);
-        const secondManager = new TimerManager(secondAdapter, i18n);
+        const firstManager = new TimerManager(asTimerAdapter(firstAdapter), i18n);
+        const secondManager = new TimerManager(asTimerAdapter(secondAdapter), i18n);
 
         try {
             await clock.tickAsync(500);
@@ -56,7 +59,11 @@ describe('TimerManager lifecycle', () => {
             setState: () => stateWrites++,
         };
         try {
-            const manager = new TimerManager(adapter, { nextTimer: 'Next timer' });
+            const manager = new TimerManager(asTimerAdapter(adapter), {
+                nextTimer: 'Next timer',
+                notAvailable: 'not available',
+                weekDaysFull: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+            });
 
             manager.close();
             manager.close();
@@ -71,7 +78,7 @@ describe('TimerManager lifecycle', () => {
     });
 });
 
-describe('TimerManager TypeScript migration', () => {
+describe('TimerManager TypeScript runtime', () => {
     const translations = {
         nextTimer: 'Next timer',
         notAvailable: 'not available',
@@ -105,76 +112,78 @@ describe('TimerManager TypeScript migration', () => {
         };
     }
 
-    it('preserves constants and delayed initialization writes', async () => {
+    it('exposes stable constants and performs delayed initialization writes', async () => {
         const clock = sinon.useFakeTimers();
-        const legacy = createAdapter();
-        const typed = createAdapter();
-        const legacyManager = new TimerManager(legacy.adapter, translations);
-        const typedManager = new TypedTimerManager(typed.adapter, translations);
+        const runtime = createAdapter();
+        const manager = new TimerManager(asTimerAdapter(runtime.adapter), translations);
 
         try {
             await clock.tickAsync(500);
             assert.deepEqual(
-                [TypedTimerManager.DISABLED, TypedTimerManager.SKIP, TypedTimerManager.ENABLED, TypedTimerManager.START],
                 [TimerManager.DISABLED, TimerManager.SKIP, TimerManager.ENABLED, TimerManager.START],
+                [-1, 0, 1, 2],
             );
-            assert.deepEqual(typed.writes, legacy.writes);
+            assert.equal(runtime.writes.length, 3);
+            assert.deepEqual(
+                runtime.writes.map(write => write.slice(0, 2)),
+                [
+                    ['setObjectNotExists', 'info.nextTimer'],
+                    ['setObject', 'timer'],
+                    ['setState', 'info.nextTimer'],
+                ],
+            );
         } finally {
-            legacyManager.close();
-            typedManager.close();
+            manager.close();
             clock.restore();
         }
     });
 
-    it('preserves next-run calculation and room-name updates', () => {
-        const legacy = createAdapter();
-        const typed = createAdapter();
-        const legacyManager = new TimerManager(legacy.adapter, translations);
-        const typedManager = new TypedTimerManager(typed.adapter, translations);
-        const legacyObject = {
+    it('calculates the next run and updates room names', () => {
+        const runtime = createAdapter();
+        const manager = new TimerManager(asTimerAdapter(runtime.adapter), translations);
+        const timerObject = {
             _id: 'mihome-vacuum.test.timer.135_14_30',
             native: { channels: ['kitchen'] },
             common: { name: '', states: {} },
         };
-        const typedObject = structuredClone(legacyObject);
         const now = new Date(2026, 7, 3, 10, 0, 0, 0);
 
         try {
-            assert.deepEqual(
-                typedManager._calcNextProcessTime(typedObject, now),
-                legacyManager._calcNextProcessTime(legacyObject, now),
-            );
-            assert.deepEqual(typedObject, legacyObject);
-            assert.deepEqual(typed.writes, legacy.writes);
+            const nextProcessTime = manager._calcNextProcessTime(timerObject, now);
+
+            assert.equal(nextProcessTime, timerObject.native.nextProcessTime);
+            assert.ok(nextProcessTime instanceof Date);
+            assert.equal(nextProcessTime.getFullYear(), 2026);
+            assert.equal(nextProcessTime.getMonth(), 7);
+            assert.equal(nextProcessTime.getDate(), 3);
+            assert.equal(nextProcessTime.getHours(), 14);
+            assert.equal(nextProcessTime.getMinutes(), 30);
+            assert.equal(timerObject.common.name, 'Mo We Fr 14:30 >Kitchen');
+            assert.deepEqual(timerObject.common.states, { 1: 'Mon 14:30' });
+            assert.equal(runtime.writes.length, 1);
+            assert.deepEqual(runtime.writes[0].slice(0, 2), ['setObject', timerObject._id]);
         } finally {
-            legacyManager.close();
-            typedManager.close();
+            manager.close();
         }
     });
 
-    it('preserves the legacy invalid persisted-date contract', () => {
-        const legacy = createAdapter();
-        const typed = createAdapter();
-        const legacyManager = new TimerManager(legacy.adapter, translations);
-        const typedManager = new TypedTimerManager(typed.adapter, translations);
-        const legacyObject = {
+    it('keeps the historical invalid persisted-date contract', () => {
+        const runtime = createAdapter();
+        const manager = new TimerManager(asTimerAdapter(runtime.adapter), translations);
+        const timerObject = {
             _id: 'mihome-vacuum.test.timer.1_12_00',
             native: { nextProcessTime: 'invalid' },
             common: { name: '', states: {} },
         };
-        const typedObject = structuredClone(legacyObject);
 
         try {
-            const legacyResult = legacyManager._calcNextProcessTime(legacyObject, new Date(2026, 7, 3));
-            const typedResult = typedManager._calcNextProcessTime(typedObject, new Date(2026, 7, 3));
+            const result = manager._calcNextProcessTime(timerObject, new Date(2026, 7, 3));
 
-            assert.equal(Number.isNaN(Number(legacyResult)), true);
-            assert.equal(Number.isNaN(Number(typedResult)), true);
-            assert.deepEqual(typedObject, legacyObject);
-            assert.deepEqual(typed.writes, legacy.writes);
+            assert.equal(Number.isNaN(Number(result)), true);
+            assert.equal(Number.isNaN(Number(timerObject.native.nextProcessTime)), true);
+            assert.equal(runtime.writes.length, 0);
         } finally {
-            legacyManager.close();
-            typedManager.close();
+            manager.close();
         }
     });
 });
