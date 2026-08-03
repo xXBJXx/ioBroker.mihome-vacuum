@@ -278,11 +278,11 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', '.github', 'auto-merge.yml')), false);
     });
 
-    it('keeps Materialize active while shipping the transitional React admin build', () => {
+    it('uses the React HTML configuration while retaining the Materialize fallback', () => {
         const ioPackage = require('../io-package.json');
         const adminDirectory = path.join(__dirname, '..', 'admin');
 
-        assert.equal(ioPackage.common.adminUI.config, 'materialize');
+        assert.equal(ioPackage.common.adminUI.config, 'html');
         assert.equal(fs.existsSync(path.join(adminDirectory, 'index_m.html')), true);
         assert.equal(fs.existsSync(path.join(adminDirectory, 'index.html')), true);
         assert.equal(fs.existsSync(path.join(adminDirectory, 'assets', 'index.js')), true);
