@@ -25,23 +25,16 @@ function loadFactory(modulePath) {
     });
 }
 
-describe('Adapter entry-point TypeScript migration', () => {
-    it('preserves compact-mode factory, adapter name, events, and initial state', () => {
-        const legacyFactory = loadFactory('../main');
-        const typedFactory = loadFactory('../build/main');
-        const legacy = legacyFactory({ synthetic: true });
-        const typed = typedFactory({ synthetic: true });
-        const selectState = adapter => ({
-            options: adapter.options,
-            events: adapter.eventNames().sort(),
-            unsupportedFeatures: adapter.unsupportedFeatures,
-            miio: adapter.miio,
-            vacuum: adapter.vacuum,
-            xiaomiApi: adapter.xiaomiApi,
-        });
+describe('Adapter TypeScript runtime entry point', () => {
+    it('provides the compact-mode factory, adapter name, events, and initial state', () => {
+        const factory = loadFactory('../build/main');
+        const adapter = factory({ synthetic: true });
 
-        assert.deepEqual(selectState(typed), selectState(legacy));
-        assert.deepEqual(typed.options, { synthetic: true, name: 'mihome-vacuum' });
-        assert.deepEqual(typed.eventNames().sort(), ['message', 'ready', 'stateChange', 'unload']);
+        assert.deepEqual(adapter.options, { synthetic: true, name: 'mihome-vacuum' });
+        assert.deepEqual(adapter.eventNames().sort(), ['message', 'ready', 'stateChange', 'unload']);
+        assert.equal(adapter.unsupportedFeatures, '|');
+        assert.equal(adapter.miio, null);
+        assert.equal(adapter.vacuum, null);
+        assert.equal(adapter.xiaomiApi, null);
     });
 });

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const proxyquire = require('proxyquire').noCallThru().noPreserveCache();
 
 function runRenderer(modulePath) {
@@ -77,14 +78,16 @@ function runRenderer(modulePath) {
     };
 }
 
-describe('MapCreator TypeScript subsystem migration', () => {
-    it('preserves the complete synthetic render and canvas call sequence', () => {
-        const legacy = runRenderer('../lib/mapCreator');
-        const typed = runRenderer('../build/lib/mapCreator');
+describe('MapCreator TypeScript runtime subsystem', () => {
+    it('matches the complete synthetic render and canvas call fixture', () => {
+        const rendered = runRenderer('../build/lib/mapCreator');
+        const eventDigest = crypto.createHash('sha256').update(JSON.stringify(rendered.events)).digest('hex');
 
-        assert.deepEqual(typed, legacy);
-        assert.deepEqual(typed.rotated, [100, 100]);
-        assert.equal(typed.events.some(event => event[0] === 'strokeRect'), true);
-        assert.equal(typed.events.some(event => event[0] === 'putImageData'), true);
+        assert.equal(eventDigest, '2c053bc4ae7f2a24f385b4f64f21ec85ac9fe13f6eb78e4a65e7a5760afc575e');
+        assert.equal(rendered.events.length, 71);
+        assert.deepEqual(rendered.result, [128, 124]);
+        assert.deepEqual(rendered.rotated, [100, 100]);
+        assert.equal(rendered.events.some(event => event[0] === 'strokeRect'), true);
+        assert.equal(rendered.events.some(event => event[0] === 'putImageData'), true);
     });
 });

@@ -1,6 +1,5 @@
 const assert = require('node:assert/strict');
-const LegacyFeatureManager = require('../lib/featureManager');
-const TypedFeatureManager = require('../build/lib/featureManager');
+const FeatureManager = require('../build/lib/featureManager');
 
 function createAdapter() {
     const events = [];
@@ -63,15 +62,33 @@ async function runFeatureScenario(Manager, model = 'roborock.vacuum.synthetic') 
     };
 }
 
-describe('Generic vacuum FeatureManager TypeScript migration', () => {
-    it('preserves initialization, model deduplication, and every detected feature', async () => {
-        const legacy = await runFeatureScenario(LegacyFeatureManager);
-        const typed = await runFeatureScenario(TypedFeatureManager);
+describe('Generic vacuum FeatureManager runtime', () => {
+    it('initializes once and detects every supported feature', async () => {
+        const result = await runFeatureScenario(FeatureManager);
 
-        assert.deepEqual(typed, legacy);
-        assert.equal(typed.events.filter(event => event[1] === 'info.device_model').length, 1);
-        assert.equal(typed.flags.water_box_mode, 2);
-        assert.equal(typed.flags.mop, true);
+        assert.equal(result.events.filter(event => event[1] === 'info.device_model').length, 1);
+        assert.deepEqual(result.flags, {
+            model: 'roborock.vacuum.synthetic',
+            water_box: true,
+            dustCollect: true,
+            washMop: true,
+            mop: true,
+            water_box_mode: 2,
+            mop_mode: true,
+            dock_status: true,
+        });
+        assert.deepEqual(
+            result.events.filter(event => event[0] === 'setObjectNotExistsAsync').map(event => event[1]),
+            [
+                'info.water_box',
+                'control.dustCollect',
+                'control.washMop',
+                'info.mop',
+                'control.water_box_level',
+                'control.mop_mode',
+                'info.dock_status',
+            ],
+        );
     });
 
     it('preserves extended suction detection and updates only room fan-power objects', async () => {
@@ -85,16 +102,14 @@ describe('Generic vacuum FeatureManager TypeScript migration', () => {
             return { events: adapter.events, detected: manager.NewSuctionPower };
         };
 
-        const legacy = await runScenario(LegacyFeatureManager);
-        const typed = await runScenario(TypedFeatureManager);
+        const result = await runScenario(FeatureManager);
 
-        assert.deepEqual(typed, legacy);
-        assert.equal(typed.detected, true);
+        assert.equal(result.detected, true);
         assert.deepEqual(
-            typed.events.filter(event => event[0] === 'setObjectAsync').map(event => event[1]),
+            result.events.filter(event => event[0] === 'setObjectAsync').map(event => event[1]),
             ['control.fan_power', 'mihome-vacuum.0.rooms.living.roomFanPower'],
         );
-        assert.equal(typed.events.some(event => event.includes('mihome-vacuum.0.rooms.living.mapIndex')), false);
+        assert.equal(result.events.some(event => event.includes('mihome-vacuum.0.rooms.living.mapIndex')), false);
     });
 
     it('preserves one-time unsupported-feature detection without creating objects', async () => {
@@ -124,12 +139,10 @@ describe('Generic vacuum FeatureManager TypeScript migration', () => {
             };
         };
 
-        const legacy = await runScenario(LegacyFeatureManager);
-        const typed = await runScenario(TypedFeatureManager);
+        const result = await runScenario(FeatureManager);
 
-        assert.deepEqual(typed, legacy);
-        assert.equal(typed.events.some(event => event[0] === 'setObjectNotExistsAsync'), false);
-        assert.deepEqual(typed.flags, {
+        assert.equal(result.events.some(event => event[0] === 'setObjectNotExistsAsync'), false);
+        assert.deepEqual(result.flags, {
             water_box: false,
             dustCollect: false,
             washMop: false,
