@@ -21,13 +21,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/iobroker-community-adapters/ioBroker.mihome-vacuum"
+    "url": "git+https://github.com/iobroker-community-adapters/ioBroker.mihome-vacuum.git"
   },
   "scripts": {
     "build:backend": "tsc -p tsconfig.build.json",
     "build": "npm run build:backend",
+    "prepublishOnly": "npm run build",
     "test:js": "npm run build:backend && mocha --config test/mocha.custom.json \"{!(node_modules|test)/**/*.test.js,*.test.js,test/**/test!(PackageFiles|Startup).js}\"",
-    "test:package": "mocha test/package --exit",
+    "test:package": "npm run build && mocha test/package --exit",
+    "test:package-smoke": "npm run build && node scripts/package-smoke.cjs",
     "test:unit": "mocha test/unit --exit",
     "test:integration": "mocha test/integration --exit",
     "test": "npm run test:js && npm run test:package",
@@ -46,6 +48,12 @@
     "io-package.json",
     "LICENSE"
   ],
+  "allowScripts": {
+    "canvas@3.2.3": true,
+    "diskusage@1.2.0": true,
+    "esbuild@0.11.23": true,
+    "unix-dgram@2.0.6": true
+  },
   "optionalDependencies": {
     "canvas": "^3.2.3"
   },

@@ -110,8 +110,21 @@ describe('Runtime dependencies', () => {
         assert.equal(buildConfig.compilerOptions.outDir, 'build');
         assert.equal(buildConfig.compilerOptions.noEmit, false);
         assert.equal(packageJson.scripts.build, 'npm run build:backend');
+        assert.equal(packageJson.scripts.prepublishOnly, 'npm run build');
+        assert.equal(packageJson.scripts['test:package'], 'npm run build && mocha test/package --exit');
+        assert.equal(
+            packageJson.scripts['test:package-smoke'],
+            'npm run build && node scripts/package-smoke.cjs',
+        );
         assert.equal('prepack' in packageJson.scripts, false);
         assert.equal(packageJson.files.includes('src/'), false);
+        assert.deepEqual(packageJson.allowScripts, {
+            'canvas@3.2.3': true,
+            'diskusage@1.2.0': true,
+            'esbuild@0.11.23': true,
+            'unix-dgram@2.0.6': true,
+        });
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'scripts', 'package-smoke.cjs')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'tools.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'stockCommands.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'lib', 'rrMapHeader.ts')), true);
@@ -200,6 +213,7 @@ describe('Runtime dependencies', () => {
         assert.equal([...workflow.matchAll(/actions\/setup-node@v6/g)].length, 3);
         assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v[1-5]/);
         assert.match(workflow, /- name: Type-check source code\s+run: npm run check/);
+        assert.match(workflow, /- name: Test packed runtime installation\s+run: npm run test:package-smoke/);
     });
 
     it('uses the official tokenless ioBroker release workflow', () => {

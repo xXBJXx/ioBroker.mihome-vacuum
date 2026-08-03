@@ -63,6 +63,8 @@ jobs:
               run: npm run check
             - name: Test package files
               run: npm run test:package
+            - name: Test packed runtime installation
+              run: npm run test:package-smoke
 
     # Runs adapter tests on all supported node versions and OSes
     adapter-tests:
