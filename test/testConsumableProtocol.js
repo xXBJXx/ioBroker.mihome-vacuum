@@ -1,8 +1,7 @@
 const assert = require('node:assert/strict');
-const objects = require('../lib/objects');
-const commands = require('../lib/stockCommands');
-const legacyProtocol = require('../lib/consumableProtocol');
-const typedProtocol = require('../build/lib/consumableProtocol');
+const objects = require('../build/lib/objects');
+const commands = require('../build/lib/stockCommands');
+const consumableProtocol = require('../build/lib/consumableProtocol');
 
 function createConsumableValues() {
     return {
@@ -18,18 +17,29 @@ function createConsumableValues() {
     };
 }
 
-describe('Generic consumable protocol TypeScript migration', () => {
-    it('preserves detection against the complete existing object and command catalogs', () => {
+describe('Generic consumable protocol runtime', () => {
+    it('detects consumables against the complete runtime object and command catalogs', () => {
         const values = createConsumableValues();
-        const legacy = legacyProtocol.detectConsumables(values, objects.stockConsumable.list, commands);
-        const typed = typedProtocol.detectConsumables(values, objects.stockConsumable.list, commands);
+        const detected = consumableProtocol.detectConsumables(values, objects.stockConsumable.list, commands);
 
-        assert.deepEqual(typed, legacy);
         assert.deepEqual(
-            typed.map(feature => feature.id),
+            detected.map(feature => feature.id),
             ['filter', 'main_brush', 'mop_pad', 'sensors', 'side_brush', 'water_filter', 'strainer', 'dust_collection'],
         );
-        assert.equal(typed.some(feature => feature.id === 'cleaning_brush'), false);
+        assert.deepEqual(
+            detected.map(feature => feature.name),
+            [
+                'filter_work_time',
+                'main_brush_work_time',
+                'mop_pad_work_time',
+                'sensor_dirty_time',
+                'side_brush_work_time',
+                'filter_element_work_time',
+                'strainer_work_times',
+                'dust_collection_work_times',
+            ],
+        );
+        assert.equal(detected.some(feature => feature.id === 'cleaning_brush'), false);
     });
 
     it('preserves zero values while excluding missing, null, and undefined values', () => {
@@ -40,36 +50,28 @@ describe('Generic consumable protocol TypeScript migration', () => {
             {},
         ];
 
-        for (const values of scenarios) {
-            assert.deepEqual(
-                typedProtocol.detectConsumables(values, objects.stockConsumable.list, commands),
-                legacyProtocol.detectConsumables(values, objects.stockConsumable.list, commands),
-            );
-        }
-        assert.equal(typedProtocol.detectConsumables(scenarios[0], objects.stockConsumable.list, commands).length, 1);
-        assert.equal(typedProtocol.detectConsumables(scenarios[1], objects.stockConsumable.list, commands).length, 0);
+        assert.deepEqual(
+            scenarios.map(
+                values => consumableProtocol.detectConsumables(values, objects.stockConsumable.list, commands).length,
+            ),
+            [1, 0, 0, 0],
+        );
     });
 
     it('preserves percentage calculation, negative lifetime, and raw counters', () => {
         const values = createConsumableValues();
-        const features = typedProtocol.detectConsumables(values, objects.stockConsumable.list, commands);
+        const features = consumableProtocol.detectConsumables(values, objects.stockConsumable.list, commands);
 
-        for (const feature of features) {
-            assert.equal(
-                typedProtocol.calculateConsumableValue(values, feature),
-                legacyProtocol.calculateConsumableValue(values, feature),
-            );
-        }
-        assert.equal(typedProtocol.calculateConsumableValue(values, features[0]), 99);
+        assert.deepEqual(
+            features.map(feature => consumableProtocol.calculateConsumableValue(values, feature)),
+            [99, 99, 99, 99, 99, 99, 12, 7],
+        );
         assert.equal(
-            typedProtocol.calculateConsumableValue({ filter_work_time: 600000 }, features[0]),
+            consumableProtocol.calculateConsumableValue({ filter_work_time: 600000 }, features[0]),
             -11,
         );
         const strainer = features.find(feature => feature.id === 'strainer');
         assert.ok(strainer);
-        assert.equal(
-            typedProtocol.calculateConsumableValue(values, strainer),
-            12,
-        );
+        assert.equal(consumableProtocol.calculateConsumableValue(values, strainer), 12);
     });
 });

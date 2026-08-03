@@ -69,7 +69,7 @@ describe('Runtime dependencies', () => {
     });
 
     it('uses defaults matching every declared object value type', () => {
-        const objectDefinitions = require('../lib/objects');
+        const objectDefinitions = require('../build/lib/objects');
         const mismatches = [];
         const visit = (value, path = 'objects') => {
             if (!value || typeof value !== 'object') {

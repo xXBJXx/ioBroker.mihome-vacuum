@@ -1,13 +1,11 @@
 const assert = require('node:assert/strict');
-const legacyProtocol = require('../lib/mapStateProtocol');
-const typedProtocol = require('../build/lib/mapStateProtocol');
+const mapStateProtocol = require('../build/lib/mapStateProtocol');
 
-describe('Generic map-state protocol TypeScript migration', () => {
-    it('preserves S5/S5e fallback-room construction for numeric and string IDs', () => {
+describe('Generic map-state protocol runtime', () => {
+    it('creates S5/S5e fallback rooms for numeric and string IDs', () => {
         const roomIds = [16, 21, 'custom'];
 
-        assert.deepEqual(typedProtocol.createFallbackRooms(roomIds), legacyProtocol.createFallbackRooms(roomIds));
-        assert.deepEqual(typedProtocol.createFallbackRooms(roomIds), [
+        assert.deepEqual(mapStateProtocol.createFallbackRooms(roomIds), [
             [16, 'room16'],
             [21, 'room21'],
             ['custom', 'roomcustom'],
@@ -23,18 +21,13 @@ describe('Generic map-state protocol TypeScript migration', () => {
         ];
 
         for (const scenario of scenarios) {
-            assert.equal(
-                typedProtocol.shouldUpdateZones(scenario.zones, scenario.last),
-                legacyProtocol.shouldUpdateZones(scenario.zones, scenario.last),
-            );
-            assert.equal(typedProtocol.shouldUpdateZones(scenario.zones, scenario.last), scenario.expected);
+            assert.equal(mapStateProtocol.shouldUpdateZones(scenario.zones, scenario.last), scenario.expected);
         }
 
-        const legacyZones = [[1, 2, 3, 4], [5, 6, 7, 8]];
-        const typedZones = [[1, 2, 3, 4], [5, 6, 7, 8]];
-        assert.equal(typedProtocol.createZoneStateValue(typedZones), legacyProtocol.createZoneStateValue(legacyZones));
-        assert.equal(typedProtocol.createZoneStateValue([[1, 2, 3, 4]]), '[1,2,3,4,1]');
-        assert.deepEqual(typedZones, [[1, 2, 3, 4, 1], [5, 6, 7, 8, 1]]);
+        const zones = [[1, 2, 3, 4], [5, 6, 7, 8]];
+        assert.equal(mapStateProtocol.createZoneStateValue(zones), '[1,2,3,4,1],[5,6,7,8,1]');
+        assert.equal(mapStateProtocol.createZoneStateValue([[1, 2, 3, 4]]), '[1,2,3,4,1]');
+        assert.deepEqual(zones, [[1, 2, 3, 4, 1], [5, 6, 7, 8, 1]]);
     });
 
     it('preserves go-to change detection and comma-separated state values', () => {
@@ -46,12 +39,8 @@ describe('Generic map-state protocol TypeScript migration', () => {
         ];
 
         for (const scenario of scenarios) {
-            assert.equal(
-                typedProtocol.shouldUpdateGoTo(scenario.goTo, scenario.last),
-                legacyProtocol.shouldUpdateGoTo(scenario.goTo, scenario.last),
-            );
-            assert.equal(typedProtocol.shouldUpdateGoTo(scenario.goTo, scenario.last), scenario.expected);
+            assert.equal(mapStateProtocol.shouldUpdateGoTo(scenario.goTo, scenario.last), scenario.expected);
         }
-        assert.equal(typedProtocol.createGoToStateValue([1234, 5678]), '1234,5678');
+        assert.equal(mapStateProtocol.createGoToStateValue([1234, 5678]), '1234,5678');
     });
 });
