@@ -1,6 +1,5 @@
 const assert = require('node:assert/strict');
-const RRMapParser = require('../lib/RRMapParser');
-const TypedRRMapParser = require('../build/lib/RRMapParser');
+const RRMapParser = require('../build/lib/RRMapParser');
 const { parseRRMapHeader } = require('../build/lib/rrMapHeader');
 
 function createBlock(type, headerLength, dataLength, writePayload) {
@@ -138,8 +137,8 @@ describe('RR map header parser', () => {
         assert.deepEqual(parseRRMapHeader(Buffer.alloc(0x14)), {});
         assert.equal(RRMapParser.PARSEDATA(Buffer.alloc(0x14)), null);
         assert.deepEqual(parseRRMapHeader(undefined), {});
-        assert.deepEqual(TypedRRMapParser.PARSE(undefined), {});
-        assert.equal(TypedRRMapParser.PARSEDATA(undefined), null);
+        assert.deepEqual(RRMapParser.PARSE(undefined), {});
+        assert.equal(RRMapParser.PARSEDATA(undefined), null);
     });
 
     it('preserves the legacy truncated-signature error contract', () => {
@@ -185,24 +184,40 @@ describe('RR map header parser', () => {
         });
     });
 
-    it('keeps the complete TypeScript block parser in parity with the legacy implementation', () => {
-        assert.equal(typeof TypedRRMapParser, 'function');
-        assert.deepEqual(TypedRRMapParser.TYPES, RRMapParser.TYPES);
+    it('parses generation-3 segments, predicted paths, and mop paths', () => {
+        const mopPath = /** @type {number[] & { points: unknown[] }} */ ([1, 2, 3]);
+        mopPath.points = [];
 
-        for (const map of [createSyntheticRRMap(), createGen3PathMap()]) {
-            assert.deepEqual(TypedRRMapParser.PARSE(map), RRMapParser.PARSE(map));
-            assert.deepEqual(TypedRRMapParser.PARSEBLOCK(map, 0x14), RRMapParser.PARSEBLOCK(map, 0x14));
-            assert.deepEqual(TypedRRMapParser.PARSEDATA(map), RRMapParser.PARSEDATA(map));
-        }
+        assert.deepEqual(RRMapParser.PARSEDATA(createGen3PathMap()), {
+            image: {
+                segments: { count: 2, id: [4, 5] },
+                position: { top: 992, left: 40 },
+                dimensions: { height: 2, width: 2 },
+                pixels: {
+                    floor: [0, 3],
+                    obstacle: [1],
+                    segments: [8388608, 10485763],
+                    carpet: [],
+                },
+            },
+            goto_predicted_path: {
+                current_angle: -45,
+                points: [
+                    [900, 50200],
+                    [1100, 50000],
+                ],
+            },
+            mop_path: mopPath,
+        });
     });
 
-    it('keeps invalid and truncated TypeScript input behavior in parity', () => {
+    it('rejects invalid and truncated runtime input consistently', () => {
         const invalid = Buffer.alloc(0x14);
         const truncated = Buffer.from('rr', 'ascii');
 
-        assert.deepEqual(TypedRRMapParser.PARSE(invalid), RRMapParser.PARSE(invalid));
-        assert.equal(TypedRRMapParser.PARSEDATA(invalid), null);
-        assert.throws(() => TypedRRMapParser.PARSE(truncated), RangeError);
-        assert.throws(() => TypedRRMapParser.PARSEDATA(truncated), RangeError);
+        assert.deepEqual(RRMapParser.PARSE(invalid), {});
+        assert.equal(RRMapParser.PARSEDATA(invalid), null);
+        assert.throws(() => RRMapParser.PARSE(truncated), RangeError);
+        assert.throws(() => RRMapParser.PARSEDATA(truncated), RangeError);
     });
 });

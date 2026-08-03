@@ -31,7 +31,7 @@ describe('MapCreator canvas dimensions', () => {
                 this.height = 32;
             }
         }
-        const MapCreator = proxyquire('../lib/mapCreator', { canvas: { createCanvas, Image } });
+        const MapCreator = proxyquire('../build/lib/mapCreator', { canvas: { createCanvas, Image } });
         const map = {
             image: {
                 dimensions: { width: 1, height: 1 },
