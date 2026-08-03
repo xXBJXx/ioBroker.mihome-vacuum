@@ -1,22 +1,17 @@
 const assert = require('node:assert/strict');
-const legacyProtocol = require('../lib/mapPointerProtocol');
-const typedProtocol = require('../build/lib/mapPointerProtocol');
+const mapPointerProtocol = require('../build/lib/mapPointerProtocol');
 
-describe('Generic map-pointer protocol TypeScript migration', () => {
-    it('preserves ready pointers with exactly three percent-separated parts', () => {
+describe('Generic map-pointer protocol runtime', () => {
+    it('accepts ready pointers with exactly three percent-separated parts', () => {
         const pointers = ['synthetic-host%synthetic-token%synthetic-file', 'a%%c'];
 
         for (const pointer of pointers) {
             const response = { result: [pointer] };
-            assert.deepEqual(
-                typedProtocol.parseMapPointerResponse(response),
-                legacyProtocol.parseMapPointerResponse(response),
-            );
-            assert.deepEqual(typedProtocol.parseMapPointerResponse(response), { action: 'ready', pointer });
+            assert.deepEqual(mapPointerProtocol.parseMapPointerResponse(response), { action: 'ready', pointer });
         }
     });
 
-    it('preserves map-slot stop and all retry decisions', () => {
+    it('handles map-slot stop and all retry decisions', () => {
         const responses = [
             { result: ['map_slot_2'] },
             {},
@@ -28,22 +23,26 @@ describe('Generic map-pointer protocol TypeScript migration', () => {
             { result: 'unknown_method' },
         ];
 
-        for (const response of responses) {
-            assert.deepEqual(
-                typedProtocol.parseMapPointerResponse(response),
-                legacyProtocol.parseMapPointerResponse(response),
-            );
-        }
-        assert.deepEqual(typedProtocol.parseMapPointerResponse(responses[0]), { action: 'stop' });
-        assert.deepEqual(typedProtocol.parseMapPointerResponse(responses[4]), { action: 'retry' });
+        assert.deepEqual(
+            responses.map(response => mapPointerProtocol.parseMapPointerResponse(response)),
+            [
+                { action: 'stop' },
+                { action: 'retry' },
+                { action: 'retry' },
+                { action: 'retry' },
+                { action: 'retry' },
+                { action: 'retry' },
+                { action: 'retry' },
+                { action: 'retry' },
+            ],
+        );
     });
 
-    it('preserves errors for malformed truthy result containers', () => {
+    it('rejects malformed truthy result containers', () => {
         const responses = [{ result: [] }, { result: [42] }, { result: {} }];
 
         for (const response of responses) {
-            assert.throws(() => legacyProtocol.parseMapPointerResponse(response), TypeError);
-            assert.throws(() => typedProtocol.parseMapPointerResponse(response), TypeError);
+            assert.throws(() => mapPointerProtocol.parseMapPointerResponse(response), TypeError);
         }
     });
 });

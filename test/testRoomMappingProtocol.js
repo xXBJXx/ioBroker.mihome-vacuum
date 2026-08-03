@@ -1,15 +1,12 @@
 const assert = require('node:assert/strict');
-const legacyProtocol = require('../lib/roomMappingProtocol');
-const typedProtocol = require('../build/lib/roomMappingProtocol');
+const roomMappingProtocol = require('../build/lib/roomMappingProtocol');
 
-describe('Generic room-mapping protocol TypeScript migration', () => {
-    it('preserves non-empty room arrays and their original reference', () => {
+describe('Generic room-mapping protocol runtime', () => {
+    it('returns non-empty room arrays with their original reference', () => {
         const rooms = [[16, 'Living room'], [17, 'Kitchen']];
         const response = { result: rooms };
-        const legacy = legacyProtocol.parseRoomMapping(response);
-        const typed = typedProtocol.parseRoomMapping(response);
+        const typed = roomMappingProtocol.parseRoomMapping(response);
 
-        assert.deepEqual(typed, legacy);
         assert.equal(typed, rooms);
     });
 
@@ -17,8 +14,7 @@ describe('Generic room-mapping protocol TypeScript migration', () => {
         const responses = [{ result: [] }, {}, { result: null }, { result: false }, { result: 'unknown_method' }];
 
         for (const response of responses) {
-            assert.equal(typedProtocol.parseRoomMapping(response), legacyProtocol.parseRoomMapping(response));
-            assert.equal(typedProtocol.parseRoomMapping(response), null);
+            assert.equal(roomMappingProtocol.parseRoomMapping(response), null);
         }
     });
 
@@ -29,9 +25,8 @@ describe('Generic room-mapping protocol TypeScript migration', () => {
         ];
 
         for (const response of responses) {
-            assert.equal(typedProtocol.parseRoomMapping(response), legacyProtocol.parseRoomMapping(response));
-            assert.equal(typedProtocol.parseRoomMapping(response), response.result);
+            assert.equal(roomMappingProtocol.parseRoomMapping(response), response.result);
         }
-        assert.equal(typedProtocol.parseRoomMapping({ result: 42 }), null);
+        assert.equal(roomMappingProtocol.parseRoomMapping({ result: 42 }), null);
     });
 });

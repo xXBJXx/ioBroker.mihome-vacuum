@@ -1,8 +1,7 @@
 const assert = require('node:assert/strict');
-const legacyProtocol = require('../lib/multiMapProtocol');
-const typedProtocol = require('../build/lib/multiMapProtocol');
+const multiMapProtocol = require('../build/lib/multiMapProtocol');
 
-describe('Generic multi-map protocol TypeScript migration', () => {
+describe('Generic multi-map protocol runtime', () => {
     it('preserves map metadata and creates state labels for named and unnamed maps', () => {
         /** @type {import('../src/types/multiMapProtocol').MultiMapResponse} */
         const response = {
@@ -17,10 +16,8 @@ describe('Generic multi-map protocol TypeScript migration', () => {
             ],
         };
 
-        const legacy = legacyProtocol.parseMultiMapList(response);
-        const typed = typedProtocol.parseMultiMapList(response);
+        const typed = multiMapProtocol.parseMultiMapList(response);
 
-        assert.deepEqual(typed, legacy);
         assert.ok(typed);
         assert.equal(typed.maps[0].extra, 'preserved');
         assert.deepEqual(typed.states, {
@@ -34,18 +31,16 @@ describe('Generic multi-map protocol TypeScript migration', () => {
         /** @type {import('../src/types/multiMapProtocol').MultiMapResponse[]} */
         const responses = [{ result: [{ map_info: [] }] }, { result: 'unknown_method' }, {}, { result: null }];
 
-        for (const response of responses) {
-            assert.deepEqual(typedProtocol.parseMultiMapList(response), legacyProtocol.parseMultiMapList(response));
+        assert.deepEqual(multiMapProtocol.parseMultiMapList(responses[0]), { maps: [], states: {} });
+        for (const response of responses.slice(1)) {
+            assert.equal(multiMapProtocol.parseMultiMapList(response), null);
         }
-        assert.deepEqual(typedProtocol.parseMultiMapList(responses[0]), { maps: [], states: {} });
-        assert.equal(typedProtocol.parseMultiMapList(responses[1]), null);
     });
 
     it('preserves rejection of malformed supported responses', () => {
         /** @type {any} */
         const malformed = { result: [{}] };
 
-        assert.throws(() => legacyProtocol.parseMultiMapList(malformed), TypeError);
-        assert.throws(() => typedProtocol.parseMultiMapList(malformed), TypeError);
+        assert.throws(() => multiMapProtocol.parseMultiMapList(malformed), TypeError);
     });
 });

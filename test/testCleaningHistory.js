@@ -1,9 +1,8 @@
 const assert = require('node:assert/strict');
-const legacyHistory = require('../lib/cleaningHistory');
-const typedHistory = require('../build/lib/cleaningHistory');
+const cleaningHistory = require('../build/lib/cleaningHistory');
 
-describe('Generic cleaning-history TypeScript migration', () => {
-    it('preserves modern and legacy cleaning summaries', () => {
+describe('Generic cleaning-history runtime', () => {
+    it('parses modern and legacy cleaning summaries', () => {
         /** @type {import('../src/types/cleaningHistory').CleaningSummaryResponse[]} */
         const responses = [
             {
@@ -17,18 +16,18 @@ describe('Generic cleaning-history TypeScript migration', () => {
             { result: [25075, 376442500, 10, [1617553319, 1617470350]] },
         ];
 
-        for (const response of responses) {
-            assert.deepEqual(typedHistory.parseCleaningSummary(response), legacyHistory.parseCleaningSummary(response));
-        }
-        assert.deepEqual(typedHistory.parseCleaningSummary(responses[0]), {
+        const expected = {
             clean_time: 25075,
             total_area: 376442500,
             num_cleanups: 10,
             cleaning_record_ids: [1617553319, 1617470350],
-        });
+        };
+        for (const response of responses) {
+            assert.deepEqual(cleaningHistory.parseCleaningSummary(response), expected);
+        }
     });
 
-    it('preserves modern, legacy, empty, and missing cleaning records', () => {
+    it('parses modern, legacy, empty, and missing cleaning records', () => {
         /** @type {Array<import('../src/types/cleaningHistory').CleaningRecordsResponse | null>} */
         const responses = [
             {
@@ -51,10 +50,7 @@ describe('Generic cleaning-history TypeScript migration', () => {
             null,
         ];
 
-        for (const response of responses) {
-            assert.deepEqual(typedHistory.parseCleaningRecords(response), legacyHistory.parseCleaningRecords(response));
-        }
-        assert.deepEqual(typedHistory.parseCleaningRecords(responses[0]), [
+        assert.deepEqual(cleaningHistory.parseCleaningRecords(responses[0]), [
             {
                 start_time: 1617121021,
                 end_time: 1617135716,
@@ -76,9 +72,12 @@ describe('Generic cleaning-history TypeScript migration', () => {
                 clean_type: 2,
             },
         ]);
+        assert.deepEqual(cleaningHistory.parseCleaningRecords(responses[1]), []);
+        assert.equal(cleaningHistory.parseCleaningRecords(responses[2]), null);
+        assert.equal(cleaningHistory.parseCleaningRecords(responses[3]), null);
     });
 
-    it('preserves shallow ordered-property equivalence', () => {
+    it('compares shallow ordered properties', () => {
         const cases = [
             [[1, 2, 3], [1, 2, 3]],
             [[1, 2, 3], [1, 2, 4]],
@@ -87,14 +86,13 @@ describe('Generic cleaning-history TypeScript migration', () => {
             [{ first: { nested: true } }, { first: { nested: true } }],
         ];
 
-        for (const [first, second] of cases) {
-            assert.equal(typedHistory.isEquivalent(first, second), legacyHistory.isEquivalent(first, second));
-        }
-        assert.equal(typedHistory.isEquivalent(cases[0][0], cases[0][1]), true);
-        assert.equal(typedHistory.isEquivalent(cases[4][0], cases[4][1]), false);
+        assert.deepEqual(
+            cases.map(([first, second]) => cleaningHistory.isEquivalent(first, second)),
+            [true, false, false, true, false],
+        );
     });
 
-    it('preserves the complete HTML history representation', () => {
+    it('creates the complete HTML history representation', () => {
         const records = [
             {
                 Datum: '1.8',
@@ -114,10 +112,8 @@ describe('Generic cleaning-history TypeScript migration', () => {
             },
         ];
 
-        const legacy = legacyHistory.createHtmlTable(records);
-        const typed = typedHistory.createHtmlTable(records);
+        const typed = cleaningHistory.createHtmlTable(records);
 
-        assert.equal(typed, legacy);
         assert.match(typed, /^<table><colgroup>/);
         assert.equal((typed.match(/<tr>/g) || []).length, 3);
         assert.match(typed, /<td ALIGN="CENTER">false<\/td><\/tr><\/table>$/);
