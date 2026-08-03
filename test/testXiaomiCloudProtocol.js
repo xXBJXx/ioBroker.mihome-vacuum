@@ -1,14 +1,25 @@
 const assert = require('node:assert/strict');
-const LegacyProtocol = require('../lib/XiaomiCloudProtocol');
-const TypedProtocol = require('../build/lib/XiaomiCloudProtocol');
-const XiaomiCloudConnector = require('../lib/XiaomiCloudConnector');
+const cloudProtocol = require('../build/lib/XiaomiCloudProtocol');
+const XiaomiCloudConnector = require('../build/lib/XiaomiCloudConnector');
 
-describe('Xiaomi Cloud protocol utility TypeScript migration', () => {
+describe('Xiaomi Cloud protocol utility runtime', () => {
+    function createAdapter() {
+        return {
+            config: {},
+            namespace: 'mihome-vacuum.0',
+            async setStateAsync() {},
+            async getForeignObjectAsync() {
+                return null;
+            },
+            async setForeignObjectAsync() {},
+        };
+    }
+
     function createConnector() {
         return new XiaomiCloudConnector(
             { debug() {}, info() {}, warn() {}, error() {} },
             {},
-            { config: {} },
+            createAdapter(),
         );
     }
 
@@ -17,34 +28,26 @@ describe('Xiaomi Cloud protocol utility TypeScript migration', () => {
         const headers = ['replace=new=value; Path=/; Secure', 'added=third; HttpOnly'];
         const expected = 'keep=first; replace=new=value; added=third';
 
-        assert.equal(LegacyProtocol.mergeSessionCookies(current, headers), expected);
-        assert.equal(TypedProtocol.mergeSessionCookies(current, headers), expected);
-        assert.equal(LegacyProtocol.mergeSessionCookies(current, undefined), current);
-        assert.equal(TypedProtocol.mergeSessionCookies(current, undefined), current);
+        assert.equal(cloudProtocol.mergeSessionCookies(current, headers), expected);
+        assert.equal(cloudProtocol.mergeSessionCookies(current, undefined), current);
     });
 
     it('builds and reads cookie headers in exact-name parity', () => {
         const sessionCookies = 'serviceTokenExtra=wrong; serviceToken=synthetic=value';
         const expectedHeader = 'base=synthetic; pass_ua=web; uLocale=en_GB; serviceToken=synthetic';
 
-        assert.equal(LegacyProtocol.buildCookieHeader('base=synthetic', 'serviceToken=synthetic'), expectedHeader);
-        assert.equal(TypedProtocol.buildCookieHeader('base=synthetic', 'serviceToken=synthetic'), expectedHeader);
-        assert.equal(LegacyProtocol.getSessionCookie(sessionCookies, 'serviceToken'), 'synthetic=value');
-        assert.equal(TypedProtocol.getSessionCookie(sessionCookies, 'serviceToken'), 'synthetic=value');
-        assert.equal(LegacyProtocol.getSessionCookie(sessionCookies, 'missing'), undefined);
-        assert.equal(TypedProtocol.getSessionCookie(sessionCookies, 'missing'), undefined);
+        assert.equal(cloudProtocol.buildCookieHeader('base=synthetic', 'serviceToken=synthetic'), expectedHeader);
+        assert.equal(cloudProtocol.getSessionCookie(sessionCookies, 'serviceToken'), 'synthetic=value');
+        assert.equal(cloudProtocol.getSessionCookie(sessionCookies, 'missing'), undefined);
     });
 
     it('parses prefixed Xiaomi JSON and preserves non-string input', () => {
         const object = { synthetic: true };
         const raw = '&&&START&&&{"synthetic":true}';
 
-        assert.deepEqual(LegacyProtocol.parseXiaomiJSON(raw), object);
-        assert.deepEqual(TypedProtocol.parseXiaomiJSON(raw), object);
-        assert.equal(LegacyProtocol.parseXiaomiJSON(object), object);
-        assert.equal(TypedProtocol.parseXiaomiJSON(object), object);
-        assert.equal(LegacyProtocol.parseXiaomiJSON('{invalid'), null);
-        assert.equal(TypedProtocol.parseXiaomiJSON('{invalid'), null);
+        assert.deepEqual(cloudProtocol.parseXiaomiJSON(raw), object);
+        assert.equal(cloudProtocol.parseXiaomiJSON(object), object);
+        assert.equal(cloudProtocol.parseXiaomiJSON('{invalid'), null);
     });
 
     it('normalizes request failures without exposing response data or URLs', () => {
@@ -61,8 +64,7 @@ describe('Xiaomi Cloud protocol utility TypeScript migration', () => {
         ];
 
         for (const [error, expected] of cases) {
-            assert.equal(LegacyProtocol.safeXiaomiError(error), expected);
-            assert.equal(TypedProtocol.safeXiaomiError(error), expected);
+            assert.equal(cloudProtocol.safeXiaomiError(error), expected);
             assert.doesNotMatch(expected, /synthetic-secret|synthetic-sensitive-response/);
         }
     });

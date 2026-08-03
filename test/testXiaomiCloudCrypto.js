@@ -1,9 +1,20 @@
 const assert = require('node:assert/strict');
-const LegacyCrypto = require('../lib/XiaomiCloudCrypto');
-const TypedCrypto = require('../build/lib/XiaomiCloudCrypto');
-const XiaomiCloudConnector = require('../lib/XiaomiCloudConnector');
+const cloudCrypto = require('../build/lib/XiaomiCloudCrypto');
+const XiaomiCloudConnector = require('../build/lib/XiaomiCloudConnector');
 
-describe('Xiaomi Cloud cryptography TypeScript migration', () => {
+function createAdapter() {
+    return {
+        config: {},
+        namespace: 'mihome-vacuum.0',
+        async setStateAsync() {},
+        async getForeignObjectAsync() {
+            return null;
+        },
+        async setForeignObjectAsync() {},
+    };
+}
+
+describe('Xiaomi Cloud cryptography runtime', () => {
     const millis = 1_700_000_000_000;
     const nonce = 'AAECAwQFBgcBsFUV';
     const ssecurity = Buffer.alloc(16, 1).toString('base64');
@@ -11,19 +22,13 @@ describe('Xiaomi Cloud cryptography TypeScript migration', () => {
     const url = 'https://de.api.io.mi.com/app/home/getmapfileurl';
     const params = { data: '{"obj_name":"synthetic-map"}' };
 
-    it('preserves nonce, signed nonce, and request signature fixtures', () => {
+    it('matches nonce, signed nonce, and request signature fixtures', () => {
         const randomBytes = () => Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]);
-        assert.equal(LegacyCrypto.generateNonce(millis, randomBytes), nonce);
-        assert.equal(TypedCrypto.generateNonce(millis, randomBytes), nonce);
+        assert.equal(cloudCrypto.generateNonce(millis, randomBytes), nonce);
 
-        assert.equal(LegacyCrypto.signedNonce(nonce, ssecurity), expectedSignedNonce);
-        assert.equal(TypedCrypto.signedNonce(nonce, ssecurity), expectedSignedNonce);
+        assert.equal(cloudCrypto.signedNonce(nonce, ssecurity), expectedSignedNonce);
         assert.equal(
-            LegacyCrypto.generateEncSignature(url, 'POST', expectedSignedNonce, params),
-            'A8gwUO8rQZNJw949YdZdceeIpwQ=',
-        );
-        assert.equal(
-            TypedCrypto.generateEncSignature(url, 'POST', expectedSignedNonce, params),
+            cloudCrypto.generateEncSignature(url, 'POST', expectedSignedNonce, params),
             'A8gwUO8rQZNJw949YdZdceeIpwQ=',
         );
     });
@@ -31,26 +36,15 @@ describe('Xiaomi Cloud cryptography TypeScript migration', () => {
     it('preserves RC4-drop-1024 encryption and decryption bytes', () => {
         const plainText = 'synthetic-cloud-payload';
         const expectedCipherText = 'JlWLhwAPv/HfHfm7u4efpcm6/Lkk4aI=';
-        const legacyCipherText = new LegacyCrypto.XiaomiRC4Cipher(expectedSignedNonce).encrypt(plainText);
-        const typedCipherText = new TypedCrypto.XiaomiRC4Cipher(expectedSignedNonce).encrypt(plainText);
+        const cipherText = new cloudCrypto.XiaomiRC4Cipher(expectedSignedNonce).encrypt(plainText);
 
-        assert.equal(legacyCipherText, expectedCipherText);
-        assert.equal(typedCipherText, expectedCipherText);
-        assert.equal(new LegacyCrypto.XiaomiRC4Cipher(expectedSignedNonce).decrypt(expectedCipherText), plainText);
-        assert.equal(new TypedCrypto.XiaomiRC4Cipher(expectedSignedNonce).decrypt(expectedCipherText), plainText);
+        assert.equal(cipherText, expectedCipherText);
+        assert.equal(new cloudCrypto.XiaomiRC4Cipher(expectedSignedNonce).decrypt(expectedCipherText), plainText);
     });
 
     it('preserves encrypted parameter order and signatures', () => {
-        const legacy = LegacyCrypto.generateEncryptedParams(
-            new LegacyCrypto.XiaomiRC4Cipher(expectedSignedNonce),
-            url,
-            'POST',
-            nonce,
-            structuredClone(params),
-            ssecurity,
-        );
-        const typed = TypedCrypto.generateEncryptedParams(
-            new TypedCrypto.XiaomiRC4Cipher(expectedSignedNonce),
+        const encrypted = cloudCrypto.generateEncryptedParams(
+            new cloudCrypto.XiaomiRC4Cipher(expectedSignedNonce),
             url,
             'POST',
             nonce,
@@ -65,22 +59,21 @@ describe('Xiaomi Cloud cryptography TypeScript migration', () => {
             _nonce: nonce,
         };
 
-        assert.deepEqual(legacy, expected);
-        assert.deepEqual(typed, expected);
-        assert.deepEqual(Object.keys(typed), Object.keys(legacy));
+        assert.deepEqual(encrypted, expected);
+        assert.deepEqual(Object.keys(encrypted), ['data', 'rc4_hash__', 'signature', 'ssecurity', '_nonce']);
     });
 
     it('keeps the connector compatibility methods delegated to the extracted module', () => {
         const connector = new XiaomiCloudConnector(
             { debug() {}, info() {}, warn() {}, error() {} },
             {},
-            { config: {} },
+            createAdapter(),
         );
 
-        assert.equal(connector.signedNonce(nonce, ssecurity), LegacyCrypto.signedNonce(nonce, ssecurity));
+        assert.equal(connector.signedNonce(nonce, ssecurity), expectedSignedNonce);
         assert.equal(
             connector.generateEncSignature(url, 'POST', expectedSignedNonce, params),
-            LegacyCrypto.generateEncSignature(url, 'POST', expectedSignedNonce, params),
+            'A8gwUO8rQZNJw949YdZdceeIpwQ=',
         );
     });
 });

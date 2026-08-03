@@ -1,9 +1,20 @@
 const assert = require('node:assert/strict');
-const LegacySession = require('../lib/XiaomiCloudSession');
-const TypedSession = require('../build/lib/XiaomiCloudSession');
-const XiaomiCloudConnector = require('../lib/XiaomiCloudConnector');
+const cloudSession = require('../build/lib/XiaomiCloudSession');
+const XiaomiCloudConnector = require('../build/lib/XiaomiCloudConnector');
 
-describe('Xiaomi Cloud session TypeScript migration', () => {
+describe('Xiaomi Cloud session runtime', () => {
+    function createAdapter() {
+        return {
+            config: {},
+            namespace: 'mihome-vacuum.0',
+            async setStateAsync() {},
+            async getForeignObjectAsync() {
+                return null;
+            },
+            async setForeignObjectAsync() {},
+        };
+    }
+
     function createValidSession() {
         return {
             deviceId: 'synthetic-device',
@@ -18,8 +29,7 @@ describe('Xiaomi Cloud session TypeScript migration', () => {
     it('accepts the complete synthetic session contract', () => {
         const session = createValidSession();
 
-        assert.equal(LegacySession.isValidCloudSession(session), true);
-        assert.equal(TypedSession.isValidCloudSession(session), true);
+        assert.equal(cloudSession.isValidCloudSession(session), true);
     });
 
     it('rejects every missing or malformed required field in parity', () => {
@@ -36,8 +46,7 @@ describe('Xiaomi Cloud session TypeScript migration', () => {
         ];
 
         for (const session of invalidSessions) {
-            assert.equal(TypedSession.isValidCloudSession(session), LegacySession.isValidCloudSession(session));
-            assert.equal(TypedSession.isValidCloudSession(session), false);
+            assert.equal(cloudSession.isValidCloudSession(session), false);
         }
     });
 
@@ -56,8 +65,7 @@ describe('Xiaomi Cloud session TypeScript migration', () => {
         ];
 
         for (const [raw, decoder, expected] of cases) {
-            assert.deepEqual(LegacySession.decodeStoredCloudSession(raw, decoder), expected);
-            assert.deepEqual(TypedSession.decodeStoredCloudSession(raw, decoder), expected);
+            assert.deepEqual(cloudSession.decodeStoredCloudSession(raw, decoder), expected);
         }
     });
 
@@ -65,11 +73,11 @@ describe('Xiaomi Cloud session TypeScript migration', () => {
         const connector = new XiaomiCloudConnector(
             { debug() {}, info() {}, warn() {}, error() {} },
             {},
-            { config: {} },
+            createAdapter(),
         );
         const session = createValidSession();
 
-        assert.equal(connector.isValidSession(session), LegacySession.isValidCloudSession(session));
+        assert.equal(connector.isValidSession(session), true);
         assert.equal(connector.isValidSession({ ...session, sessionCookies: '' }), false);
     });
 });
