@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
-const ViomiManager = require('../lib/viomi');
-const TypedViomiManager = require('../build/lib/viomi');
+const crypto = require('node:crypto');
+const ViomiManager = require('../build/lib/viomi');
 
 function createAdapter() {
     const states = new Map();
@@ -181,7 +181,7 @@ describe('ViomiManager status polling', () => {
     });
 });
 
-describe('ViomiManager TypeScript migration', () => {
+describe('ViomiManager TypeScript runtime', () => {
     function createIdleManager(Manager, adapter, miio) {
         const originalMain = Manager.prototype.main;
         Manager.prototype.main = async () => undefined;
@@ -192,44 +192,43 @@ describe('ViomiManager TypeScript migration', () => {
         }
     }
 
-    it('preserves protocol catalogs and state definitions', async () => {
-        const legacy = createIdleManager(ViomiManager, createAdapter(), { sendMessage: async () => ({}) });
-        const typed = createIdleManager(TypedViomiManager, createAdapter(), { sendMessage: async () => ({}) });
+    it('matches the reviewed protocol catalogs and state definitions', async () => {
+        const manager = createIdleManager(ViomiManager, createAdapter(), { sendMessage: async () => ({}) });
+        const catalogs = {
+            ViomiDevices: manager.ViomiDevices,
+            PARAMS: manager.PARAMS,
+            ERROR_CODES: manager.ERROR_CODES,
+            STATES: manager.STATES,
+            FANSPEED: manager.FANSPEED,
+            MODE: manager.MODE,
+        };
+        const digest = crypto.createHash('sha256').update(JSON.stringify(catalogs)).digest('hex');
 
-        assert.deepEqual(typed.ViomiDevices, legacy.ViomiDevices);
-        assert.deepEqual(typed.PARAMS, legacy.PARAMS);
-        assert.deepEqual(typed.ERROR_CODES, legacy.ERROR_CODES);
-        assert.deepEqual(typed.STATES, legacy.STATES);
-        assert.deepEqual(typed.FANSPEED, legacy.FANSPEED);
-        assert.deepEqual(typed.MODE, legacy.MODE);
-
-        await legacy.close();
-        await typed.close();
+        assert.equal(digest, 'da2dba11838e839001488a6a286dee14cc26ddb7278981075fe20b416a735584');
+        assert.equal(manager.PARAMS.length, 22);
+        assert.equal(Object.keys(manager.STATES).length, 8);
+        await manager.close();
     });
 
-    it('preserves polling objects, state values, and safe logs', async () => {
+    it('creates polling objects, state values, and safe logs', async () => {
         const result = [5, 3, 1, 2105, 80, 0, '0', 30, 42, 10, '0', 0, 1, 1, 2, 1, 1, 0, 1, 1, 0, 1];
-        const legacyAdapter = createAdapter();
-        const typedAdapter = createAdapter();
-        const legacyObjects = [];
-        const typedObjects = [];
-        legacyAdapter.setObjectNotExistsAsync = async id => {
-            legacyObjects.push(id);
+        const adapter = createAdapter();
+        const objectIds = [];
+        adapter.setObjectNotExistsAsync = async id => {
+            objectIds.push(id);
         };
-        typedAdapter.setObjectNotExistsAsync = async id => {
-            typedObjects.push(id);
-        };
-        const legacy = new ViomiManager(legacyAdapter, { sendMessage: async () => ({ result: [...result] }) });
-        const typed = new TypedViomiManager(typedAdapter, { sendMessage: async () => ({ result: [...result] }) });
+        const manager = new ViomiManager(adapter, { sendMessage: async () => ({ result: [...result] }) });
 
         await waitForPolling();
-        await legacy.close();
-        await typed.close();
+        await manager.close();
 
-        assert.deepEqual(typedObjects, legacyObjects);
-        assert.deepEqual([...typedAdapter.states], [...legacyAdapter.states]);
-        assert.deepEqual(typed.lastProps, legacy.lastProps);
-        assert.deepEqual(typedAdapter.debugMessages, legacyAdapter.debugMessages);
+        assert.equal(objectIds.length, 20);
+        assert.equal(objectIds.includes('control.run_state'), true);
+        assert.equal(objectIds.includes('control.light_state'), true);
+        assert.deepEqual(adapter.states.get('control.run_state'), { val: 5, ack: true });
+        assert.deepEqual(adapter.states.get('control.battary_life'), { val: 80, ack: true });
+        assert.equal(manager.lastProps.mode, 1);
+        assert.equal(adapter.debugMessages.some(message => message.includes(JSON.stringify(result))), false);
     });
 
     it('preserves every supported command branch and acknowledgement', async () => {
@@ -250,34 +249,22 @@ describe('ViomiManager TypeScript migration', () => {
         ];
 
         for (const [command, value, properties, expectedMethod, expectedParams] of cases) {
-            const legacyAdapter = createAdapter();
-            const typedAdapter = createAdapter();
-            const legacyCalls = [];
-            const typedCalls = [];
-            const legacy = createIdleManager(ViomiManager, legacyAdapter, {
+            const adapter = createAdapter();
+            const calls = [];
+            const manager = createIdleManager(ViomiManager, adapter, {
                 sendMessage: async (method, params) => {
-                    legacyCalls.push({ method, params });
+                    calls.push({ method, params });
                     return { result: ['ok'] };
                 },
             });
-            const typed = createIdleManager(TypedViomiManager, typedAdapter, {
-                sendMessage: async (method, params) => {
-                    typedCalls.push({ method, params });
-                    return { result: ['ok'] };
-                },
-            });
-            Object.assign(legacy.lastProps, properties);
-            Object.assign(typed.lastProps, properties);
+            Object.assign(manager.lastProps, properties);
             const id = `mihome-vacuum.0.control.${command}`;
 
-            await legacy.stateChange(id, { val: value, ack: false });
-            await typed.stateChange(id, { val: value, ack: false });
+            await manager.stateChange(id, { val: value, ack: false });
 
-            assert.deepEqual(legacyCalls, [{ method: expectedMethod, params: expectedParams }]);
-            assert.deepEqual(typedCalls, legacyCalls);
-            assert.deepEqual(typedAdapter.states.get(id), legacyAdapter.states.get(id));
-            await legacy.close();
-            await typed.close();
+            assert.deepEqual(calls, [{ method: expectedMethod, params: expectedParams }]);
+            assert.deepEqual(adapter.states.get(id), { val: value, ack: true });
+            await manager.close();
         }
     });
 
@@ -306,11 +293,10 @@ describe('ViomiManager TypeScript migration', () => {
             return { calls, warnings, states: [...adapter.states], timeouts: manager.globalTimeouts };
         };
 
-        const legacy = await runScenario(ViomiManager);
-        const typed = await runScenario(TypedViomiManager);
+        const result = await runScenario(ViomiManager);
 
-        assert.deepEqual(typed, legacy);
-        assert.deepEqual(typed.calls, [{ method: 'set_charge', params: [1] }]);
-        assert.equal(JSON.stringify(typed).includes('synthetic-sensitive-command-failure'), false);
+        assert.deepEqual(result.calls, [{ method: 'set_charge', params: [1] }]);
+        assert.deepEqual(result.timeouts, {});
+        assert.equal(JSON.stringify(result).includes('synthetic-sensitive-command-failure'), false);
     });
 });

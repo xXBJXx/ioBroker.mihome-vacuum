@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
-const DreameManager = require('../lib/dreame');
-const TypedDreameManager = require('../build/lib/dreame');
+const crypto = require('node:crypto');
+const DreameManager = require('../build/lib/dreame');
 
 function createAdapter() {
     const states = new Map();
@@ -101,8 +101,9 @@ describe('DreameManager status polling', () => {
                     return { result: [{ code: -1 }] };
                 }
                 if (callCount === 2) {
+                    const properties = /** @type {any[]} */ (/** @type {unknown} */ (params));
                     return {
-                        result: [{ ...params[0], value: 'SENSITIVE_DREAME_MARKER', code: 0 }],
+                        result: [{ ...properties[0], value: 'SENSITIVE_DREAME_MARKER', code: 0 }],
                     };
                 }
                 return { result: [] };
@@ -137,7 +138,7 @@ describe('DreameManager status polling', () => {
                     return { result: [{ code: -1 }] };
                 }
                 if (firstCallCount === 2) {
-                    firstPropertyRequest = params;
+                    firstPropertyRequest = /** @type {any[]} */ (/** @type {unknown} */ (params));
                     resolvePollStarted(undefined);
                     return pollResult;
                 }
@@ -200,7 +201,7 @@ describe('DreameManager status polling', () => {
     });
 });
 
-describe('DreameManager TypeScript migration', () => {
+describe('DreameManager TypeScript runtime', () => {
     function createIdleManager(Manager, adapter, miio) {
         const originalMain = Manager.prototype.main;
         Manager.prototype.main = async () => undefined;
@@ -211,27 +212,28 @@ describe('DreameManager TypeScript migration', () => {
         }
     }
 
-    it('preserves every shared MIOT protocol catalog and polling property', async () => {
-        for (const catalog of [
-            'DreameWaterVolumes',
-            'DreameErrors',
-            'DreameState',
-            'DreameWashBaseState',
-            'DreameProperties',
-            'DreameActions',
-            'DreameBlockedObjects',
-        ]) {
-            assert.deepEqual(TypedDreameManager[catalog], DreameManager[catalog]);
-        }
+    it('matches every reviewed MIOT protocol catalog and polling property', async () => {
         const response = { result: [{ code: -1 }] };
-        const legacy = createIdleManager(DreameManager, createAdapter(), { sendMessage: async () => response });
-        const typed = createIdleManager(TypedDreameManager, createAdapter(), { sendMessage: async () => response });
+        const manager = createIdleManager(DreameManager, createAdapter(), { sendMessage: async () => response });
+        const catalogs = {
+            DreameWaterVolumes: DreameManager.DreameWaterVolumes,
+            DreameErrors: DreameManager.DreameErrors,
+            DreameState: DreameManager.DreameState,
+            DreameWashBaseState: DreameManager.DreameWashBaseState,
+            DreameProperties: DreameManager.DreameProperties,
+            DreameActions: DreameManager.DreameActions,
+            DreameBlockedObjects: DreameManager.DreameBlockedObjects,
+            PARAMS: manager.PARAMS,
+        };
+        const digest = crypto.createHash('sha256').update(JSON.stringify(catalogs)).digest('hex');
 
-        assert.deepEqual(typed.PARAMS, legacy.PARAMS);
+        assert.equal(digest, '77db27fdcf715ad4b336646c07420139ad89e7fd67c163741c705523d804b096');
+        assert.equal(manager.PARAMS.length, 18);
+        assert.equal(Object.keys(DreameManager.DreameProperties).length, 122);
+        assert.equal(Object.keys(DreameManager.DreameActions).length, 28);
         await waitForManager();
-        assert.equal(typed.washBaseAvailable, legacy.washBaseAvailable);
-        await legacy.close();
-        await typed.close();
+        assert.equal(manager.washBaseAvailable, false);
+        await manager.close();
     });
 
     it('preserves object creation, chunked polling, mappings, and special charging values', async () => {
@@ -268,15 +270,18 @@ describe('DreameManager TypeScript migration', () => {
             };
         };
 
-        const legacy = await runScenario(DreameManager);
-        const typed = await runScenario(TypedDreameManager);
+        const result = await runScenario(DreameManager);
 
-        assert.deepEqual(typed, legacy);
-        assert.deepEqual(typed.states.find(([id]) => id === 'info.state'), ['info.state', { val: 10, ack: true }]);
-        assert.deepEqual(typed.states.find(([id]) => id === 'info.is_charging'), [
+        assert.equal(result.objectIds.includes('info.battery'), true);
+        assert.equal(result.objectIds.includes('history.total_time'), true);
+        assert.deepEqual(result.states.find(([id]) => id === 'info.state'), ['info.state', { val: 10, ack: true }]);
+        assert.deepEqual(result.states.find(([id]) => id === 'info.is_charging'), [
             'info.is_charging',
             { val: true, ack: true },
         ]);
+        assert.equal(result.calls >= 2, true);
+        assert.deepEqual(result.timeouts, {});
+        assert.equal(result.logs.some(message => message.includes('value')), false);
     });
 
     it('preserves property writes, actions, and their current acknowledgement contract', async () => {
@@ -303,19 +308,18 @@ describe('DreameManager TypeScript migration', () => {
             return { calls, states: [...adapter.states] };
         };
 
-        const legacy = await runScenario(DreameManager);
-        const typed = await runScenario(TypedDreameManager);
+        const result = await runScenario(DreameManager);
 
-        assert.deepEqual(typed, legacy);
-        assert.equal(typed.calls[0].method, 'set_properties');
-        assert.equal(typed.calls[0].params[0].value, 1);
+        assert.equal(result.calls[0].method, 'set_properties');
+        assert.equal(result.calls[0].params[0].value, 1);
         assert.deepEqual(
-            typed.calls.slice(1).map(call => [call.params.siid, call.params.aiid]),
+            result.calls.slice(1).map(call => [call.params.siid, call.params.aiid]),
             [
                 [2, 1],
                 [7, 1],
             ],
         );
+        assert.equal(result.states.length, 0);
     });
 
     it('preserves all wash-base command decisions and idempotent shutdown', async () => {
@@ -346,17 +350,16 @@ describe('DreameManager TypeScript migration', () => {
             return { calls, states: [...adapter.states], timeouts: manager.globalTimeouts };
         };
 
-        const legacy = await runScenario(DreameManager);
-        const typed = await runScenario(TypedDreameManager);
+        const result = await runScenario(DreameManager);
 
-        assert.deepEqual(typed, legacy);
         assert.deepEqual(
-            typed.calls.map(call => call.params.in[0].value),
+            result.calls.map(call => call.params.in[0].value),
             ['1,1', '1,0', '3,0'],
         );
+        assert.deepEqual(result.timeouts, {});
     });
 
-    it('stops the typed candidate during a pending chunk after a safely redacted probe failure', async () => {
+    it('stops during a pending chunk after a safely redacted probe failure', async () => {
         const adapter = createAdapter();
         let calls = 0;
         /** @type {() => void} */
@@ -369,7 +372,7 @@ describe('DreameManager TypeScript migration', () => {
         const pollResult = new Promise(resolve => {
             releasePoll = resolve;
         });
-        const manager = new TypedDreameManager(adapter, {
+        const manager = new DreameManager(adapter, {
             sendMessage: async () => {
                 calls++;
                 if (calls === 1) {
