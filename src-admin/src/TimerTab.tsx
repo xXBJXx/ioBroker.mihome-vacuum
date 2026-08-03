@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { Add, Delete, Refresh, Save } from '@mui/icons-material';
+import { Add, Delete, Refresh, Save, ScheduleRounded } from '@mui/icons-material';
 import {
     Alert,
     Box,
@@ -8,6 +8,7 @@ import {
     Card,
     CardContent,
     Checkbox,
+    Chip,
     CircularProgress,
     FormControl,
     IconButton,
@@ -31,6 +32,12 @@ const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 const hours = Array.from({ length: 24 }, (_value, hour) => hour);
 const minutes = Array.from({ length: 12 }, (_value, index) => index * 5);
 
+const timerCardSx = {
+    borderRadius: 3,
+    backgroundImage: 'linear-gradient(145deg, rgba(77, 171, 245, 0.045), transparent 42%)',
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.08)',
+} as const;
+
 interface TimerTabProps {
     timers: AdminTimer[];
     rooms: TimerOption[];
@@ -52,6 +59,22 @@ function optionName(option: TimerOption): string {
 }
 
 export function TimerTab(props: TimerTabProps): React.JSX.Element {
+    const roomNames = new Map(props.rooms.map(room => [room.id, optionName(room)]));
+    const channelNames = new Map(props.channels.map(channel => [channel.id, optionName(channel)]));
+    const dayNames = new Map(days.map((day, dayIndex) => [String(dayIndex), I18n.t(day)]));
+    const renderChips = (values: string[], labels: Map<string, string>): React.JSX.Element => (
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', py: 0.25 }}>
+            {values.map(value => (
+                <Chip
+                    key={value}
+                    label={labels.get(value) || value}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                />
+            ))}
+        </Box>
+    );
     const updateTimer = (index: number, patch: Partial<AdminTimer>): void => {
         props.onChange(
             props.timers.map((timer, timerIndex) => (timerIndex === index ? { ...timer, ...patch } : timer)),
@@ -62,16 +85,26 @@ export function TimerTab(props: TimerTabProps): React.JSX.Element {
     };
 
     return (
-        <Card variant="outlined">
+        <Card
+            variant="outlined"
+            sx={timerCardSx}
+        >
             <CardContent>
-                <Stack spacing={2}>
+                <Stack spacing={2.5}>
                     <Stack
                         direction={{ xs: 'column', sm: 'row' }}
                         spacing={1}
                         alignItems={{ sm: 'center' }}
                     >
-                        <Box sx={{ flex: 1 }}>
-                            <Typography variant="h6">{I18n.t('Timer')}</Typography>
+                        <Box sx={{ flex: 1, minWidth: 240 }}>
+                            <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                            >
+                                <ScheduleRounded color="primary" />
+                                <Typography variant="h6">{I18n.t('Timer')}</Typography>
+                            </Stack>
                             <Typography
                                 variant="body2"
                                 color="text.secondary"
@@ -105,10 +138,19 @@ export function TimerTab(props: TimerTabProps): React.JSX.Element {
                         </Button>
                     </Stack>
                     {!props.loading && !props.timers.length ? (
-                        <Alert severity="info">{I18n.t('No timers configured')}</Alert>
+                        <Alert
+                            severity="info"
+                            variant="outlined"
+                            sx={{ borderRadius: 2 }}
+                        >
+                            {I18n.t('No timers configured')}
+                        </Alert>
                     ) : null}
-                    <TableContainer sx={{ overflowX: 'auto' }}>
-                        <Table size="small">
+                    <TableContainer sx={{ overflowX: 'auto', borderRadius: 2 }}>
+                        <Table
+                            size="small"
+                            sx={{ minWidth: 1050 }}
+                        >
                             <TableHead>
                                 <TableRow>
                                     <TableCell>{I18n.t('enabled')}</TableCell>
@@ -122,7 +164,13 @@ export function TimerTab(props: TimerTabProps): React.JSX.Element {
                             </TableHead>
                             <TableBody>
                                 {props.timers.map((timer, index) => (
-                                    <TableRow key={timer.id || `new-${index}`}>
+                                    <TableRow
+                                        key={timer.id || `new-${index}`}
+                                        sx={{
+                                            '&:nth-of-type(odd)': { backgroundColor: 'rgba(128, 128, 128, 0.035)' },
+                                            '&:hover': { backgroundColor: 'rgba(66, 165, 245, 0.065)' },
+                                        }}
+                                    >
                                         <TableCell>
                                             <Checkbox
                                                 checked={timer.enabled}
@@ -141,6 +189,7 @@ export function TimerTab(props: TimerTabProps): React.JSX.Element {
                                                     multiple
                                                     label={I18n.t('day')}
                                                     value={timer.day}
+                                                    renderValue={selected => renderChips(selected, dayNames)}
                                                     onChange={event =>
                                                         updateTimer(index, { day: event.target.value as string[] })
                                                     }
@@ -200,6 +249,8 @@ export function TimerTab(props: TimerTabProps): React.JSX.Element {
                                                 fullWidth
                                                 size="small"
                                                 value={timer.rooms}
+                                                displayEmpty
+                                                renderValue={selected => renderChips(selected, roomNames)}
                                                 onChange={event =>
                                                     updateTimer(index, { rooms: event.target.value as string[] })
                                                 }
@@ -220,6 +271,8 @@ export function TimerTab(props: TimerTabProps): React.JSX.Element {
                                                 fullWidth
                                                 size="small"
                                                 value={timer.channels}
+                                                displayEmpty
+                                                renderValue={selected => renderChips(selected, channelNames)}
                                                 onChange={event =>
                                                     updateTimer(index, { channels: event.target.value as string[] })
                                                 }

@@ -7,6 +7,7 @@ import {
     Card,
     CardContent,
     Checkbox,
+    Chip,
     CircularProgress,
     CssBaseline,
     FormControl,
@@ -24,9 +25,12 @@ import {
     Typography,
 } from '@mui/material';
 import {
+    CheckCircleRounded,
     Cloud as CloudIcon,
+    HomeRounded,
     Map as MapIcon,
     QrCode2 as QrCodeIcon,
+    ScheduleRounded,
     Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { GenericApp } from '@iobroker/gui-components/build/GenericApp';
@@ -54,6 +58,13 @@ const emptyAuth: CloudAuthState = {
     lastError: '',
     expiresAt: 0,
 };
+
+const cardSx = {
+    borderRadius: 3,
+    borderColor: 'divider',
+    backgroundImage: 'linear-gradient(145deg, rgba(77, 171, 245, 0.045), transparent 42%)',
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.08)',
+} as const;
 
 const defaultNative: VacuumNative = {
     email: '',
@@ -345,7 +356,10 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
             this.state.auth.status === 'waiting_for_scan' || this.state.auth.status === 'waiting_for_confirmation';
         return (
             <Stack spacing={2}>
-                <Card variant="outlined">
+                <Card
+                    variant="outlined"
+                    sx={cardSx}
+                >
                     <CardContent>
                         <Stack spacing={2}>
                             <Stack
@@ -370,20 +384,25 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                                 >
                                     {I18n.t('Start Xiaomi QR login')}
                                 </Button>
-                                <Alert
-                                    severity={
+                                <Chip
+                                    icon={
+                                        this.state.auth.status === 'authenticated' ? <CheckCircleRounded /> : undefined
+                                    }
+                                    color={
                                         this.state.auth.status === 'authenticated'
                                             ? 'success'
                                             : this.state.auth.status === 'error'
                                               ? 'error'
                                               : 'info'
                                     }
-                                    sx={{ flex: 1 }}
-                                >
-                                    {I18n.t('Cloud status')}: {this.state.auth.status}
-                                    {this.state.auth.lastError ? ` – ${this.state.auth.lastError}` : ''}
-                                </Alert>
+                                    variant="outlined"
+                                    sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, px: 0.5 }}
+                                    label={`${I18n.t('Cloud status')}: ${this.state.auth.status}`}
+                                />
                             </Stack>
+                            {this.state.auth.lastError ? (
+                                <Alert severity="error">{this.state.auth.lastError}</Alert>
+                            ) : null}
                             {this.state.auth.loginUrl ? (
                                 <Link
                                     href={this.state.auth.loginUrl}
@@ -463,7 +482,10 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                     </CardContent>
                 </Card>
 
-                <Card variant="outlined">
+                <Card
+                    variant="outlined"
+                    sx={cardSx}
+                >
                     <CardContent>
                         <Typography
                             variant="h6"
@@ -544,7 +566,10 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
     private renderSettings(): React.JSX.Element {
         return (
             <Stack spacing={2}>
-                <Card variant="outlined">
+                <Card
+                    variant="outlined"
+                    sx={cardSx}
+                >
                     <CardContent>
                         <Stack
                             direction="row"
@@ -586,7 +611,10 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                                 />
                             </Grid>
                         </Grid>
-                        <Stack mt={2}>
+                        <Stack
+                            className="settings-toggle-grid"
+                            mt={2}
+                        >
                             <FormControlLabel
                                 control={
                                     <Checkbox
@@ -646,7 +674,10 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
     private renderMapSettings(): React.JSX.Element {
         const mapEnabled = this.state.native.enableMiMap || this.state.native.valetudo_enable;
         return (
-            <Card variant="outlined">
+            <Card
+                variant="outlined"
+                sx={cardSx}
+            >
                 <CardContent>
                     <Stack
                         direction="row"
@@ -711,6 +742,7 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                                 size={{ xs: 12, md: 3 }}
                             >
                                 <TextField
+                                    className="color-field"
                                     fullWidth
                                     disabled={!mapEnabled}
                                     type="color"
@@ -758,69 +790,88 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                     className="App"
                     sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
                 >
-                    <Box sx={{ px: 2, pt: 2, borderBottom: 1, borderColor: 'divider' }}>
-                        <Stack
-                            direction="row"
-                            alignItems="center"
-                            spacing={2}
-                        >
-                            <Box
-                                component="img"
-                                src="./mihome-vacuum.png"
-                                alt="Mi Home Vacuum"
-                                sx={{ width: 48 }}
-                            />
-                            <Box sx={{ minWidth: 0 }}>
-                                <Typography variant="h5">Mi Home Vacuum</Typography>
-                                <Typography
-                                    variant="body2"
-                                    color="text.secondary"
-                                >
-                                    {I18n.t('Control of Xiaomi/Roborock vacuum cleaner')}
-                                </Typography>
-                            </Box>
-                        </Stack>
-                        <Tabs
-                            value={selectedTab}
-                            onChange={(_event, value: string) => this.selectTab(value)}
-                            variant="scrollable"
-                            scrollButtons="auto"
-                        >
-                            <Tab
-                                value="connection"
-                                label={I18n.t('Main')}
-                            />
-                            <Tab
-                                value="settings"
-                                label={I18n.t('Settings')}
-                            />
-                            <Tab
-                                value="map"
-                                label={I18n.t('Map settings')}
-                            />
-                            <Tab
-                                value="timer"
-                                label={I18n.t('Timer')}
-                            />
-                        </Tabs>
+                    <Box className="app-header">
+                        <Box className="content-shell">
+                            <Stack
+                                direction="row"
+                                alignItems="center"
+                                spacing={2}
+                                className="brand-row"
+                            >
+                                <Box
+                                    className="brand-logo"
+                                    component="img"
+                                    src="./mihome-vacuum.png"
+                                    alt="Mi Home Vacuum"
+                                />
+                                <Box sx={{ minWidth: 0 }}>
+                                    <Typography
+                                        variant="h5"
+                                        fontWeight={700}
+                                    >
+                                        Mi Home Vacuum
+                                    </Typography>
+                                    <Typography
+                                        variant="body2"
+                                        color="text.secondary"
+                                    >
+                                        {I18n.t('Control of Xiaomi/Roborock vacuum cleaner')}
+                                    </Typography>
+                                </Box>
+                            </Stack>
+                            <Tabs
+                                value={selectedTab}
+                                onChange={(_event, value: string) => this.selectTab(value)}
+                                variant="scrollable"
+                                scrollButtons="auto"
+                                className="main-tabs"
+                            >
+                                <Tab
+                                    icon={<HomeRounded />}
+                                    iconPosition="start"
+                                    value="connection"
+                                    label={I18n.t('Main')}
+                                />
+                                <Tab
+                                    icon={<SettingsIcon />}
+                                    iconPosition="start"
+                                    value="settings"
+                                    label={I18n.t('Settings')}
+                                />
+                                <Tab
+                                    icon={<MapIcon />}
+                                    iconPosition="start"
+                                    value="map"
+                                    label={I18n.t('Map settings')}
+                                />
+                                <Tab
+                                    icon={<ScheduleRounded />}
+                                    iconPosition="start"
+                                    value="timer"
+                                    label={I18n.t('Timer')}
+                                />
+                            </Tabs>
+                        </Box>
                     </Box>
-                    <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-                        {selectedTab === 'connection' ? this.renderConnection() : null}
-                        {selectedTab === 'settings' ? this.renderSettings() : null}
-                        {selectedTab === 'map' ? this.renderMapSettings() : null}
-                        {selectedTab === 'timer' ? (
-                            <TimerTab
-                                timers={this.state.timers}
-                                rooms={this.state.timerRooms}
-                                channels={this.state.timerChannels}
-                                loading={this.state.timersLoading}
-                                saving={this.state.timersSaving}
-                                dirty={this.state.timersDirty}
-                                onChange={this.updateTimers}
-                                onReload={() => void this.loadTimers()}
-                                onSave={() => void this.saveTimers()}
-                            />
-                        ) : null}
+                    <Box sx={{ flex: 1, overflow: 'auto' }}>
+                        <Box className="content-shell page-content">
+                            {selectedTab === 'connection' ? this.renderConnection() : null}
+                            {selectedTab === 'settings' ? this.renderSettings() : null}
+                            {selectedTab === 'map' ? this.renderMapSettings() : null}
+                            {selectedTab === 'timer' ? (
+                                <TimerTab
+                                    timers={this.state.timers}
+                                    rooms={this.state.timerRooms}
+                                    channels={this.state.timerChannels}
+                                    loading={this.state.timersLoading}
+                                    saving={this.state.timersSaving}
+                                    dirty={this.state.timersDirty}
+                                    onChange={this.updateTimers}
+                                    onReload={() => void this.loadTimers()}
+                                    onSave={() => void this.saveTimers()}
+                                />
+                            ) : null}
+                        </Box>
                     </Box>
                     {this.renderSaveCloseButtons()}
                     {this.renderToast()}
