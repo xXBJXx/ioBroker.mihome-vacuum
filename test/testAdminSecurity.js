@@ -62,6 +62,7 @@ describe('Materialize admin security', () => {
 
 describe('React admin security', () => {
     const appSource = fs.readFileSync(path.join(__dirname, '..', 'src-admin', 'src', 'App.tsx'), 'utf8');
+    const timerSource = fs.readFileSync(path.join(__dirname, '..', 'src-admin', 'src', 'TimerTab.tsx'), 'utf8');
 
     it('keeps discovered tokens out of select values and labels', () => {
         assert.match(appSource, /value=\{index\}/);
@@ -80,5 +81,35 @@ describe('React admin security', () => {
     it('uses the authenticated discovery message without legacy credentials', () => {
         assert.match(appSource, /'discovery',\s*\{ authObj: \{\}, server: this\.state\.native\.server \}/);
         assert.doesNotMatch(appSource, /authObj:\s*\{[^}]*password/);
+    });
+
+    it('loads and saves timer definitions only through the validated backend', () => {
+        assert.match(appSource, /'getTimers'/);
+        assert.match(appSource, /'saveTimers'/);
+        assert.match(appSource, /ids\.has\(id\)/);
+        assert.match(appSource, /override onSave\(isClose\?: boolean\)/);
+        assert.match(timerSource, /rooms: \[\], channels: \[\]/);
+        assert.doesNotMatch(timerSource, /getForeignStates|setObject|delObject/);
+    });
+
+    it('validates and sanitizes configuration before saving', () => {
+        assert.match(appSource, /\[31, 32, 96\]\.includes\(token\.length\)/);
+        assert.match(appSource, /delete settings\.devices/);
+        assert.match(appSource, /delete settings\.MiDevice/);
+        assert.match(appSource, /deviceInfo\.unsupported/);
+    });
+
+    it('provides every new React and timer label in all supported languages', () => {
+        const dictionary = require('../admin/words.js');
+        const languages = ['en', 'de', 'ru', 'pt', 'nl', 'fr', 'it', 'es', 'pl', 'zh-cn'];
+        for (const key of [
+            'Save timers',
+            'No timers configured',
+            'Timers saved',
+            'Unknown device',
+            'Invalid timer definition',
+        ]) {
+            assert.deepEqual(Object.keys(dictionary[key]), languages);
+        }
     });
 });

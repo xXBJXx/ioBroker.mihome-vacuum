@@ -36,11 +36,14 @@ import { I18n } from '@iobroker/gui-components/build/i18n';
 import type { GenericAppProps } from '@iobroker/gui-components/build/types';
 
 import { translations } from './translations';
+import { TimerTab } from './TimerTab';
 import type {
+    AdminTimer,
     CloudAuthState,
     DiscoveredDevice,
     DiscoveryHome,
     DiscoveryResult,
+    TimerAdminResult,
     VacuumAdminState,
     VacuumNative,
 } from './types';
@@ -80,6 +83,7 @@ const defaultNative: VacuumNative = {
 
 class App extends GenericApp<GenericAppProps, VacuumAdminState> {
     private authPollTimer: ReturnType<typeof setInterval> | null = null;
+    private loadedToken = '';
 
     constructor(props: GenericAppProps) {
         super(props, {
@@ -95,10 +99,17 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
             selectedDevice: '',
             authBusy: false,
             discoveryBusy: false,
+            timers: [],
+            timerRooms: [],
+            timerChannels: [],
+            timersLoading: false,
+            timersSaving: false,
+            timersDirty: false,
         };
     }
 
     override onLoadConfig(native: Record<string, unknown>): void {
+        this.loadedToken = typeof native.token === 'string' ? native.token.trim() : '';
         this.setState({
             native: {
                 ...defaultNative,
@@ -114,7 +125,37 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
 
     override onConnectionReady(): void {
         void this.updateCloudAuth();
+        void this.loadTimers(false);
         this.authPollTimer = setInterval(() => void this.updateCloudAuth(), 3_000);
+    }
+
+    override onPrepareSave(settings: Record<string, unknown>): boolean {
+        const token = typeof settings.token === 'string' ? settings.token.replace(/\s/g, '') : '';
+        if (![31, 32, 96].includes(token.length)) {
+            this.showAlert(I18n.t('Invalid token length. Expected 32 or 96 HEX chars.'), 'error');
+            return false;
+        }
+        settings.token = token;
+        settings.ip = typeof settings.ip === 'string' ? settings.ip.trim() : '';
+        settings.email = typeof settings.email === 'string' ? settings.email.trim() : '';
+        delete settings.devices;
+        delete settings.MiDevice;
+        if (token !== this.loadedToken) {
+            void this.socket.setState(`${this.adapterName}.${this.instance}.deviceInfo.unsupported`, '', true);
+        }
+        return true;
+    }
+
+    override onSave(isClose?: boolean): void {
+        if (!this.state.timersDirty) {
+            super.onSave(isClose);
+            return;
+        }
+        void this.saveTimers().then(saved => {
+            if (saved) {
+                super.onSave(isClose);
+            }
+        });
     }
 
     override componentWillUnmount(): void {
@@ -223,6 +264,80 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
         this.updateNative('token', device.token);
         this.updateNative('ip', device.localip);
         this.updateNative('model', device.model);
+    };
+
+    private loadTimers = async (showErrors = true): Promise<void> => {
+        this.setState({ timersLoading: true });
+        try {
+            const result = await this.socket.sendTo<TimerAdminResult>(
+                `${this.adapterName}.${this.instance}`,
+                'getTimers',
+                {},
+            );
+            if (result?.err) {
+                if (showErrors) {
+                    this.showAlert(result.err, 'error');
+                }
+                return;
+            }
+            this.setState({
+                timers: Array.isArray(result?.timers) ? result.timers : [],
+                timerRooms: Array.isArray(result?.rooms) ? result.rooms : [],
+                timerChannels: Array.isArray(result?.channels) ? result.channels : [],
+                timersDirty: false,
+            });
+        } catch {
+            if (showErrors) {
+                this.showAlert(I18n.t('Could not load timers'), 'error');
+            }
+        } finally {
+            this.setState({ timersLoading: false });
+        }
+    };
+
+    private saveTimers = async (): Promise<boolean> => {
+        const ids = new Set<string>();
+        for (const timer of this.state.timers) {
+            const id = `${[...new Set(timer.day)].sort().join('')}_${String(timer.hour).padStart(2, '0')}_${String(timer.minute).padStart(2, '0')}`;
+            if (!timer.day.length || ids.has(id)) {
+                this.showAlert(
+                    I18n.t(ids.has(id) ? 'same start time of 2 timer not possible' : 'Invalid timer definition'),
+                    'error',
+                );
+                return false;
+            }
+            ids.add(id);
+        }
+        this.setState({ timersSaving: true });
+        try {
+            const result = await this.socket.sendTo<TimerAdminResult>(
+                `${this.adapterName}.${this.instance}`,
+                'saveTimers',
+                { timers: this.state.timers },
+            );
+            if (result?.err) {
+                this.showAlert(result.err, 'error');
+                return false;
+            }
+            this.setState({
+                timers: Array.isArray(result?.timers) ? result.timers : this.state.timers,
+                timerRooms: Array.isArray(result?.rooms) ? result.rooms : this.state.timerRooms,
+                timerChannels: Array.isArray(result?.channels) ? result.channels : this.state.timerChannels,
+                timersDirty: false,
+                changed: this.getIsChanged(this.state.native),
+            });
+            this.showAlert(I18n.t('Timers saved'), 'success');
+            return true;
+        } catch {
+            this.showAlert(I18n.t('Could not save timers'), 'error');
+            return false;
+        } finally {
+            this.setState({ timersSaving: false });
+        }
+    };
+
+    private updateTimers = (timers: AdminTimer[]): void => {
+        this.setState({ timers, timersDirty: true, changed: true });
     };
 
     private renderConnection(): React.JSX.Element {
@@ -683,12 +798,29 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                                 value="map"
                                 label={I18n.t('Map settings')}
                             />
+                            <Tab
+                                value="timer"
+                                label={I18n.t('Timer')}
+                            />
                         </Tabs>
                     </Box>
                     <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
                         {selectedTab === 'connection' ? this.renderConnection() : null}
                         {selectedTab === 'settings' ? this.renderSettings() : null}
                         {selectedTab === 'map' ? this.renderMapSettings() : null}
+                        {selectedTab === 'timer' ? (
+                            <TimerTab
+                                timers={this.state.timers}
+                                rooms={this.state.timerRooms}
+                                channels={this.state.timerChannels}
+                                loading={this.state.timersLoading}
+                                saving={this.state.timersSaving}
+                                dirty={this.state.timersDirty}
+                                onChange={this.updateTimers}
+                                onReload={() => void this.loadTimers()}
+                                onSave={() => void this.saveTimers()}
+                            />
+                        ) : null}
                     </Box>
                     {this.renderSaveCloseButtons()}
                     {this.renderToast()}

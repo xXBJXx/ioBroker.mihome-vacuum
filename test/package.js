@@ -112,6 +112,7 @@ describe('Runtime dependencies', () => {
         assert.equal(buildConfig.compilerOptions.noEmit, false);
         assert.equal(packageJson.scripts['build:admin'], 'vite build --config src-admin/vite.config.ts');
         assert.equal(packageJson.scripts['check:admin'], 'tsc --noEmit -p src-admin/tsconfig.json');
+        assert.equal(packageJson.scripts.translate, 'npm run build:backend && gulp translateAndUpdateWordsJS');
         assert.equal(packageJson.scripts.build, 'npm run build:backend && npm run build:admin');
         assert.equal(packageJson.scripts.check, 'tsc --noEmit -p tsconfig.check.json && npm run check:admin');
         assert.match(checkConfigSource, /"admin\/"/);
@@ -287,5 +288,6 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(adminDirectory, 'assets', 'index.js')), true);
         assert.equal(fs.existsSync(path.join(adminDirectory, 'assets', 'index.css')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src-admin', 'src', 'App.tsx')), true);
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'src-admin', 'src', 'TimerTab.tsx')), true);
     });
 });

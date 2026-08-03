@@ -49,6 +49,34 @@ export interface VacuumAdminState extends GenericAppState {
     selectedDevice: number | '';
     authBusy: boolean;
     discoveryBusy: boolean;
+    timers: AdminTimer[];
+    timerRooms: TimerOption[];
+    timerChannels: TimerOption[];
+    timersLoading: boolean;
+    timersSaving: boolean;
+    timersDirty: boolean;
+}
+
+export interface AdminTimer {
+    id?: string;
+    enabled: boolean;
+    day: string[];
+    hour: number;
+    minute: number;
+    rooms: string[];
+    channels: string[];
+}
+
+export interface TimerOption {
+    id: string;
+    name: ioBroker.StringOrTranslated;
+}
+
+export interface TimerAdminResult {
+    err?: string;
+    timers?: AdminTimer[];
+    rooms?: TimerOption[];
+    channels?: TimerOption[];
 }
 
 export interface DiscoveryHome {

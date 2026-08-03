@@ -37,7 +37,7 @@
     "test": "npm run test:js && npm run test:package",
     "check": "tsc --noEmit -p tsconfig.check.json && npm run check:admin",
     "lint": "eslint -c eslint.config.mjs .",
-    "translate": "gulp translateAndUpdateWordsJS",
+    "translate": "npm run build:backend && gulp translateAndUpdateWordsJS",
     "release": "release-script",
     "dev-server": "dev-server"
   },
