@@ -3,7 +3,8 @@
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
 		"module": "Preserve",
-		"moduleResolution": "Bundler"
+		"moduleResolution": "Bundler",
+		"types": ["node", "mocha", "@iobroker/types"]
 	},
 	"include": [
 		"**/*.js",

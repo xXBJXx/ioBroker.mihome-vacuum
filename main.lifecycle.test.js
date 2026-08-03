@@ -98,7 +98,7 @@ function createAdapter({
         }
     }
 
-    const startAdapter = proxyquire('./main', {
+    const startAdapter = proxyquire('./build/main', {
         '@iobroker/adapter-core': { Adapter: FakeAdapter },
         './lib/miio': FakeMiio,
         './lib/viomi': class {},
@@ -179,7 +179,7 @@ describe('Adapter unload lifecycle', () => {
             }
         }
 
-        const startAdapter = proxyquire('./main', {
+        const startAdapter = proxyquire('./build/main', {
             '@iobroker/adapter-core': { Adapter: FakeAdapter },
             './lib/miio': SharedFakeMiio,
             './lib/viomi': class {},

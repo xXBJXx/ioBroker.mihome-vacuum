@@ -177,20 +177,41 @@ describe('Runtime dependencies', () => {
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'roomMappingProtocol.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'mapCreator.ts')), true);
         assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'types', 'main.ts')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'featureManager.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'cleaningHistory.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'vacuumStatus.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'vacuumCommandPayloads.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'multiMapProtocol.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'consumableProtocol.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'mapStateProtocol.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'networkInfoProtocol.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'mapPointerProtocol.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'carpetModeProtocol.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'roomMappingProtocol.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudCrypto.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudSession.js')), true);
-        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudProtocol.js')), true);
+        const removedLegacyRuntime = [
+            'main.js',
+            'lib/RRMapParser.js',
+            'lib/XiaomiCloudConnector.js',
+            'lib/XiaomiCloudCrypto.js',
+            'lib/XiaomiCloudProtocol.js',
+            'lib/XiaomiCloudSession.js',
+            'lib/carpetModeProtocol.js',
+            'lib/cleaningHistory.js',
+            'lib/consumableProtocol.js',
+            'lib/dreame.js',
+            'lib/featureManager.js',
+            'lib/mapCreator.js',
+            'lib/mapPointerProtocol.js',
+            'lib/mapStateProtocol.js',
+            'lib/maphelper.js',
+            'lib/miio.js',
+            'lib/multiMapProtocol.js',
+            'lib/networkInfoProtocol.js',
+            'lib/objects.js',
+            'lib/roomManager.js',
+            'lib/roomMappingProtocol.js',
+            'lib/stockCommands.js',
+            'lib/timerManager.js',
+            'lib/tools.js',
+            'lib/vacuum.js',
+            'lib/vacuumCommandPayloads.js',
+            'lib/vacuumProtocol.js',
+            'lib/vacuumStatus.js',
+            'lib/viomi.js',
+        ];
+        for (const removedPath of removedLegacyRuntime) {
+            assert.equal(fs.existsSync(path.join(__dirname, '..', removedPath)), false, removedPath);
+        }
+        assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'XiaomiCloudConnector.test.js')), true);
     });
 
     it('runs JavaScript regression tests in CI independently from linting', () => {

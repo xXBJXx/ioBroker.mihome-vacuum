@@ -8,7 +8,7 @@ function readProjectFile(file) {
 
 describe('Sensitive command logging', () => {
     it('does not log custom state-command parameters or full responses', () => {
-        const source = readProjectFile('main.js');
+        const source = readProjectFile('src/main.ts');
 
         assert.doesNotMatch(source, /Params:\s*\$\{values\[1\]\}/);
         assert.doesNotMatch(source, /Get self send data:\s*\$\{JSON\.stringify\(DeviceData\)\}/);
@@ -16,13 +16,13 @@ describe('Sensitive command logging', () => {
     });
 
     it('does not log complete adapter message payloads', () => {
-        const source = readProjectFile('lib/vacuum.js');
+        const source = readProjectFile('src/lib/vacuum.ts');
 
         assert.doesNotMatch(source, /We are in onMessage:\$\{JSON\.stringify\(obj\)\}/);
     });
 
     it('does not log the serialized miIO request payload', () => {
-        const source = readProjectFile('lib/miio.js');
+        const source = readProjectFile('src/lib/miio.ts');
 
         assert.doesNotMatch(source, /Message=\s*\$\{messageStr\}/);
         assert.doesNotMatch(source, /adapter\.config\.token\.substr/);

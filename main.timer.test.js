@@ -65,7 +65,7 @@ class TimerFakeAdapter extends EventEmitter {
 }
 
 function createTimerAdapter() {
-    const startAdapter = proxyquire('./main', {
+    const startAdapter = proxyquire('./build/main', {
         '@iobroker/adapter-core': { Adapter: TimerFakeAdapter },
         './lib/miio': class {},
         './lib/viomi': class {},
