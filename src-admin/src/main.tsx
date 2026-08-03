@@ -24,10 +24,7 @@ async function start(): Promise<void> {
     await loadIoBrokerSocket();
     createRoot(document.getElementById('root')!).render(
         <React.StrictMode>
-            <App
-                adapterName="mihome-vacuum"
-                encryptedFields={['password', 'token']}
-            />
+            <App adapterName="mihome-vacuum" />
         </React.StrictMode>,
     );
 }

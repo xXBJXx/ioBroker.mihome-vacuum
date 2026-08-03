@@ -42,7 +42,6 @@ export class MihomeVacuum extends utils.Adapter {
         this.config.ownPort = parseInt(this.config.ownPort, 10) || 53421;
         // @ts-ignore legacy adapter config is runtime-validated
         this.config.pingInterval = parseInt(this.config.pingInterval, 10) || 20000;
-
         // Abfrageintervall mindestens 10 sec.
         // @ts-ignore legacy adapter config is runtime-validated
         if (this.config.pingInterval < 10000) {
@@ -50,11 +49,20 @@ export class MihomeVacuum extends utils.Adapter {
             this.config.pingInterval = 10000;
         }
 
+        // encryptedNative is decrypted by js-controller before the ready event. Validate the
+        // resulting clear-text token before it can reach the local UDP protocol implementation.
         // @ts-ignore legacy adapter config is runtime-validated
-        if (!this.config.token) {
+        const configuredToken = typeof this.config.token === 'string' ? this.config.token.replace(/\s/g, '') : '';
+        if (!configuredToken) {
             this.log.warn('Token not specified!');
             return;
         }
+        if (!/^(?:[a-f\d]{31}|[a-f\d]{32}|[a-f\d]{96})$/i.test(configuredToken)) {
+            this.log.error('Token is invalid or could not be decrypted!');
+            return;
+        }
+        // @ts-ignore legacy adapter config is runtime-validated
+        this.config.token = configuredToken;
         // create default States
         await Promise.all(
             objects.deviceInfo.map(async o => {

@@ -50,6 +50,7 @@ siehe englische Readme
 - Eigener Port, sollte nur bei zweiten Roboter geändert werden
 - Abfrageintervall ist die Zeit in ms, in der die Statuswerte des Roboters abgerufen werden (sollte nicht <10000 sein)
 - `wifiInterval` sowie die E-Mail-/Passwortfelder bleiben nur zur Kompatibilität mit vorhandenen Instanzkonfigurationen erhalten. Die lokale Steuerung benötigt keine Xiaomi-Zugangsdaten; die aktuelle Cloud-Anmeldung verwendet einen Xiaomi-Anmeldelink.
+- Der lokale Gerätetoken wird wie die gespeicherte Cloud-Sitzung als geschützte native Konfiguration mit der aktuellen ioBroker-Verschlüsselung `$/aes-192-cbc:` abgelegt.
 
 #### Xiaomi-Cloud-Anmeldelink
 

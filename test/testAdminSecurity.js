@@ -62,7 +62,9 @@ describe('Materialize admin security', () => {
 
 describe('React admin security', () => {
     const appSource = fs.readFileSync(path.join(__dirname, '..', 'src-admin', 'src', 'App.tsx'), 'utf8');
+    const mainSource = fs.readFileSync(path.join(__dirname, '..', 'src-admin', 'src', 'main.tsx'), 'utf8');
     const timerSource = fs.readFileSync(path.join(__dirname, '..', 'src-admin', 'src', 'TimerTab.tsx'), 'utf8');
+    const ioPackage = require('../io-package.json');
 
     it('keeps discovered tokens out of select values and labels', () => {
         assert.match(appSource, /value=\{index\}/);
@@ -97,17 +99,42 @@ describe('React admin security', () => {
         assert.match(appSource, /delete settings\.devices/);
         assert.match(appSource, /delete settings\.MiDevice/);
         assert.match(appSource, /deviceInfo\.unsupported/);
-        assert.match(appSource, /return super\.onPrepareSave\(settings\)/);
+        assert.doesNotMatch(appSource, /return super\.onPrepareSave\(settings\)/);
     });
 
-    it('recovers accidentally plain tokens and encrypts them on the next save', () => {
+    it('uses the official asynchronous ioBroker encryption contract for protected configuration', () => {
+        assert.deepEqual(ioPackage.encryptedNative, ['password', 'token', 'cloudSession']);
+        assert.deepEqual(ioPackage.protectedNative, ['password', 'token', 'cloudSession']);
+        assert.match(appSource, /officialEncryptionPrefix = '\$\/aes-192-cbc:'/);
+        assert.match(appSource, /override async getSystemConfig\(\)/);
+        assert.match(appSource, /globalThis\.crypto\.subtle\.encrypt/);
+        assert.match(appSource, /globalThis\.crypto\.subtle\.decrypt/);
+        assert.match(appSource, /globalThis\.crypto\.getRandomValues\(new Uint8Array\(16\)\)/);
+        assert.match(appSource, /return this\.socket\.encrypt\(value\)/);
+        assert.match(appSource, /return this\.socket\.decrypt\(value\)/);
+        assert.match(appSource, /this\.encryptProtectedValue\(token\)/);
+        assert.match(appSource, /this\.encryptProtectedValue\(password\)/);
+        assert.match(appSource, /encryptedToken\.startsWith\(officialEncryptionPrefix\)/);
+        assert.match(appSource, /encryptedPassword\.startsWith\(officialEncryptionPrefix\)/);
+        assert.match(appSource, /settings\.token = this\.encryptedSecretsToSave\.token/);
+        assert.doesNotMatch(appSource, /encryptedFields:\s*\['password', 'token'\]/);
+        assert.doesNotMatch(mainSource, /encryptedFields=/);
+    });
+
+    it('recovers plain and legacy XOR tokens for migration to official encryption', () => {
         assert.match(appSource, /override onPrepareLoad\(settings:/);
-        assert.match(appSource, /accidentallyPlainToken/);
-        assert.match(appSource, /\[a-f\\d\]\{96\}/);
-        assert.match(appSource, /super\.onPrepareLoad\(settings, encryptedNative\)/);
-        assert.match(appSource, /settings\.token = accidentallyPlainToken/);
-        assert.match(appSource, /this\.recoveredPlainToken = true/);
+        assert.match(appSource, /tokenPattern\.test\(normalizedValue\)/);
+        assert.match(appSource, /const legacyValue = this\.decrypt\(storedValue\)/);
+        assert.match(appSource, /this\.recoveredLegacySecret = true/);
         assert.match(appSource, /this\.setState\(\{ changed: true \}\)/);
+    });
+
+    it('keeps the token masked by default and exposes an accessible visibility toggle', () => {
+        assert.match(appSource, /tokenVisible: false/);
+        assert.match(appSource, /type=\{this\.state\.tokenVisible \? 'text' : 'password'\}/);
+        assert.match(appSource, /this\.state\.tokenVisible \? 'Hide token' : 'Show token'/);
+        assert.match(appSource, /<VisibilityOffRounded \/>/);
+        assert.match(appSource, /<VisibilityRounded \/>/);
     });
 
     it('describes the browser flow as a login link instead of a QR code', () => {
@@ -139,6 +166,10 @@ describe('React admin security', () => {
             'Authenticated',
             'Login link expired',
             'Authentication error',
+            'Could not decrypt protected configuration',
+            'Could not encrypt protected configuration',
+            'Hide token',
+            'Show token',
         ]) {
             assert.deepEqual(Object.keys(dictionary[key]), languages);
         }

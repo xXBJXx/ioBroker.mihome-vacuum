@@ -55,6 +55,7 @@ export interface VacuumAdminState extends GenericAppState {
     timersLoading: boolean;
     timersSaving: boolean;
     timersDirty: boolean;
+    tokenVisible: boolean;
 }
 
 export interface AdminTimer {

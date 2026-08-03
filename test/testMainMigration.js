@@ -7,7 +7,14 @@ class FakeAdapter extends EventEmitter {
         super();
         this.options = options;
         this.config = {};
-        this.log = { debug() {}, info() {}, warn() {}, error() {} };
+        this.warnings = [];
+        this.errors = [];
+        this.log = {
+            debug() {},
+            info() {},
+            warn: message => this.warnings.push(message),
+            error: message => this.errors.push(message),
+        };
         this.namespace = 'mihome-vacuum.0';
     }
 }
@@ -36,5 +43,16 @@ describe('Adapter TypeScript runtime entry point', () => {
         assert.equal(adapter.miio, null);
         assert.equal(adapter.vacuum, null);
         assert.equal(adapter.xiaomiApi, null);
+    });
+
+    it('rejects a token that js-controller did not decrypt before UDP initialization', async () => {
+        const factory = loadFactory('../build/main');
+        const adapter = factory({ synthetic: true });
+        adapter.config.token = '$/aes-192-cbc:synthetic-encrypted-value';
+
+        await adapter.main();
+
+        assert.equal(adapter.miio, null);
+        assert.deepEqual(adapter.errors, ['Token is invalid or could not be decrypted!']);
     });
 });

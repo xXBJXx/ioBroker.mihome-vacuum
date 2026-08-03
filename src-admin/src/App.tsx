@@ -13,6 +13,8 @@ import {
     FormControl,
     FormControlLabel,
     Grid2 as Grid,
+    IconButton,
+    InputAdornment,
     InputLabel,
     Link,
     MenuItem,
@@ -32,6 +34,8 @@ import {
     LinkRounded as LoginLinkIcon,
     ScheduleRounded,
     Settings as SettingsIcon,
+    VisibilityOffRounded,
+    VisibilityRounded,
 } from '@mui/icons-material';
 import { GenericApp } from '@iobroker/gui-components/build/GenericApp';
 import { InfoBox } from '@iobroker/gui-components/build/Components/InfoBox';
@@ -76,6 +80,23 @@ const authStatusLabels: Record<CloudAuthStatus, string> = {
     error: 'Authentication error',
 };
 
+const officialEncryptionPrefix = '$/aes-192-cbc:';
+const tokenPattern = /^(?:[a-f\d]{31}|[a-f\d]{32}|[a-f\d]{96})$/i;
+type SecretField = 'password' | 'token';
+
+function hexToBytes(value: string): Uint8Array<ArrayBuffer> {
+    const bytes = new Uint8Array(value.length / 2);
+    for (let index = 0; index < value.length; index += 2) {
+        bytes[index / 2] = Number.parseInt(value.slice(index, index + 2), 16);
+    }
+    return bytes;
+}
+
+function bytesToHex(value: ArrayBuffer | Uint8Array): string {
+    const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
 const defaultNative: VacuumNative = {
     email: '',
     password: '',
@@ -105,12 +126,16 @@ const defaultNative: VacuumNative = {
 class App extends GenericApp<GenericAppProps, VacuumAdminState> {
     private authPollTimer: ReturnType<typeof setInterval> | null = null;
     private loadedToken = '';
-    private recoveredPlainToken = false;
+    private recoveredLegacySecret = false;
+    private secretsLoadFailed = false;
+    private saveInProgress = false;
+    private systemSecret = '';
+    private encryptedSecretsToLoad: Partial<Record<SecretField, string>> = {};
+    private encryptedSecretsToSave: Record<SecretField, string> | null = null;
 
     constructor(props: GenericAppProps) {
         super(props, {
             adapterName: 'mihome-vacuum',
-            encryptedFields: ['password', 'token'],
             doNotLoadAllObjects: true,
         });
         this.state = {
@@ -127,6 +152,7 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
             timersLoading: false,
             timersSaving: false,
             timersDirty: false,
+            tokenVisible: false,
         };
     }
 
@@ -145,23 +171,52 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
         });
     }
 
-    override onPrepareLoad(settings: Record<string, unknown>, encryptedNative?: string[]): void {
-        const storedToken = typeof settings.token === 'string' ? settings.token.trim() : '';
-        const accidentallyPlainToken = /^(?:[a-f\d]{31}|[a-f\d]{32}|[a-f\d]{96})$/i.test(storedToken)
-            ? storedToken
-            : '';
-        if (accidentallyPlainToken) {
-            settings.token = '';
-        }
-        super.onPrepareLoad(settings, encryptedNative);
-        if (accidentallyPlainToken) {
-            settings.token = accidentallyPlainToken;
-            this.recoveredPlainToken = true;
+    override async getSystemConfig(): Promise<ioBroker.SystemConfigObject> {
+        const config = await super.getSystemConfig();
+        this.systemSecret = typeof config.native?.secret === 'string' ? config.native.secret : '';
+        return config;
+    }
+
+    override onPrepareLoad(settings: Record<string, unknown>): void {
+        for (const field of ['password', 'token'] as const) {
+            const storedValue = typeof settings[field] === 'string' ? settings[field] : '';
+            if (!storedValue) {
+                continue;
+            }
+            if (storedValue.startsWith(officialEncryptionPrefix)) {
+                this.encryptedSecretsToLoad[field] = storedValue;
+                settings[field] = '';
+                continue;
+            }
+            const normalizedValue = storedValue.trim();
+            if (field === 'token' && tokenPattern.test(normalizedValue)) {
+                settings.token = normalizedValue;
+                this.loadedToken = normalizedValue;
+                this.recoveredLegacySecret = true;
+                continue;
+            }
+
+            const legacyValue = this.decrypt(storedValue);
+            if (field === 'password' || tokenPattern.test(legacyValue)) {
+                settings[field] = legacyValue;
+                this.recoveredLegacySecret = true;
+                if (field === 'token') {
+                    this.loadedToken = legacyValue;
+                }
+            } else {
+                settings[field] = '';
+                this.secretsLoadFailed = true;
+            }
         }
     }
 
     override onConnectionReady(): void {
-        if (this.recoveredPlainToken) {
+        void this.initializeConnection();
+    }
+
+    private async initializeConnection(): Promise<void> {
+        await this.loadOfficialSecrets();
+        if (this.recoveredLegacySecret) {
             globalThis.changed = true;
             try {
                 window.parent.postMessage('change', '*');
@@ -175,9 +230,83 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
         this.authPollTimer = setInterval(() => void this.updateCloudAuth(), 3_000);
     }
 
+    private async loadOfficialSecrets(): Promise<void> {
+        const entries = Object.entries(this.encryptedSecretsToLoad) as [SecretField, string][];
+        if (!entries.length) {
+            return;
+        }
+        try {
+            const decryptedEntries = await Promise.all(
+                entries.map(async ([field, value]) => [field, await this.decryptProtectedValue(value)] as const),
+            );
+            const native = { ...this.state.native };
+            for (const [field, value] of decryptedEntries) {
+                native[field] = value;
+                if (field === 'token') {
+                    this.loadedToken = value;
+                }
+            }
+            this.setState({ native });
+        } catch {
+            this.secretsLoadFailed = true;
+            this.showAlert(I18n.t('Could not decrypt protected configuration'), 'error');
+        } finally {
+            this.encryptedSecretsToLoad = {};
+        }
+    }
+
+    private canUseOfficialBrowserCrypto(): boolean {
+        return /^[0-9a-f]{48}$/.test(this.systemSecret) && !!globalThis.crypto?.subtle;
+    }
+
+    private async encryptProtectedValue(value: string): Promise<string> {
+        if (!this.canUseOfficialBrowserCrypto()) {
+            return this.socket.encrypt(value);
+        }
+        const key = await globalThis.crypto.subtle.importKey(
+            'raw',
+            hexToBytes(this.systemSecret),
+            { name: 'AES-CBC' },
+            false,
+            ['encrypt'],
+        );
+        const iv = globalThis.crypto.getRandomValues(new Uint8Array(16));
+        const encrypted = await globalThis.crypto.subtle.encrypt(
+            { name: 'AES-CBC', iv },
+            key,
+            new TextEncoder().encode(value),
+        );
+        return `${officialEncryptionPrefix}${bytesToHex(iv)}:${bytesToHex(encrypted)}`;
+    }
+
+    private async decryptProtectedValue(value: string): Promise<string> {
+        if (!this.canUseOfficialBrowserCrypto() || !value.startsWith(officialEncryptionPrefix)) {
+            return this.socket.decrypt(value);
+        }
+        const [ivHex, encryptedHex] = value.slice(officialEncryptionPrefix.length).split(':', 2);
+        if (!/^[0-9a-f]{32}$/.test(ivHex) || !/^[0-9a-f]+$/.test(encryptedHex)) {
+            throw new Error('Invalid protected configuration format');
+        }
+        const key = await globalThis.crypto.subtle.importKey(
+            'raw',
+            hexToBytes(this.systemSecret),
+            { name: 'AES-CBC' },
+            false,
+            ['decrypt'],
+        );
+        const decrypted = await globalThis.crypto.subtle.decrypt(
+            { name: 'AES-CBC', iv: hexToBytes(ivHex) },
+            key,
+            hexToBytes(encryptedHex),
+        );
+        return new TextDecoder().decode(decrypted);
+    }
+
     override onPrepareSave(settings: Record<string, unknown>): boolean {
         const token = typeof settings.token === 'string' ? settings.token.replace(/\s/g, '') : '';
         if (![31, 32, 96].includes(token.length)) {
+            this.encryptedSecretsToSave = null;
+            this.saveInProgress = false;
             this.showAlert(I18n.t('Invalid token length. Expected 32 or 96 HEX chars.'), 'error');
             return false;
         }
@@ -189,19 +318,62 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
         if (token !== this.loadedToken) {
             void this.socket.setState(`${this.adapterName}.${this.instance}.deviceInfo.unsupported`, '', true);
         }
-        return super.onPrepareSave(settings);
+        if (!this.encryptedSecretsToSave) {
+            this.saveInProgress = false;
+            this.showAlert(I18n.t('Could not encrypt protected configuration'), 'error');
+            return false;
+        }
+        settings.token = this.encryptedSecretsToSave.token;
+        settings.password = this.encryptedSecretsToSave.password;
+        this.encryptedSecretsToSave = null;
+        this.saveInProgress = false;
+        return true;
     }
 
     override onSave(isClose?: boolean): void {
-        if (!this.state.timersDirty) {
-            super.onSave(isClose);
+        void this.saveWithOfficialEncryption(isClose);
+    }
+
+    private async saveWithOfficialEncryption(isClose?: boolean): Promise<void> {
+        if (this.saveInProgress) {
             return;
         }
-        void this.saveTimers().then(saved => {
-            if (saved) {
-                super.onSave(isClose);
+        if (this.secretsLoadFailed) {
+            this.showAlert(I18n.t('Could not decrypt protected configuration'), 'error');
+            return;
+        }
+        const token = typeof this.state.native.token === 'string' ? this.state.native.token.replace(/\s/g, '') : '';
+        if (![31, 32, 96].includes(token.length)) {
+            this.showAlert(I18n.t('Invalid token length. Expected 32 or 96 HEX chars.'), 'error');
+            return;
+        }
+
+        this.saveInProgress = true;
+        try {
+            if (this.state.timersDirty && !(await this.saveTimers())) {
+                return;
             }
-        });
+            const password = typeof this.state.native.password === 'string' ? this.state.native.password : '';
+            const [encryptedToken, encryptedPassword] = await Promise.all([
+                this.encryptProtectedValue(token),
+                password ? this.encryptProtectedValue(password) : Promise.resolve(''),
+            ]);
+            if (
+                !encryptedToken.startsWith(officialEncryptionPrefix) ||
+                (password && !encryptedPassword.startsWith(officialEncryptionPrefix))
+            ) {
+                throw new Error('Unexpected protected configuration format');
+            }
+            this.encryptedSecretsToSave = { token: encryptedToken, password: encryptedPassword };
+            super.onSave(isClose);
+        } catch {
+            this.encryptedSecretsToSave = null;
+            this.showAlert(I18n.t('Could not encrypt protected configuration'), 'error');
+        } finally {
+            if (!this.encryptedSecretsToSave) {
+                this.saveInProgress = false;
+            }
+        }
     }
 
     override componentWillUnmount(): void {
@@ -535,10 +707,39 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                             <Grid size={{ xs: 12, md: 6 }}>
                                 <TextField
                                     fullWidth
-                                    type="password"
+                                    type={this.state.tokenVisible ? 'text' : 'password'}
                                     label={I18n.t('Token')}
                                     value={this.state.native.token}
                                     onChange={event => this.updateNative('token', event.target.value.trim())}
+                                    slotProps={{
+                                        input: {
+                                            endAdornment: (
+                                                <InputAdornment position="end">
+                                                    <IconButton
+                                                        aria-label={I18n.t(
+                                                            this.state.tokenVisible ? 'Hide token' : 'Show token',
+                                                        )}
+                                                        title={I18n.t(
+                                                            this.state.tokenVisible ? 'Hide token' : 'Show token',
+                                                        )}
+                                                        edge="end"
+                                                        onClick={() =>
+                                                            this.setState(state => ({
+                                                                tokenVisible: !state.tokenVisible,
+                                                            }))
+                                                        }
+                                                        onMouseDown={event => event.preventDefault()}
+                                                    >
+                                                        {this.state.tokenVisible ? (
+                                                            <VisibilityOffRounded />
+                                                        ) : (
+                                                            <VisibilityRounded />
+                                                        )}
+                                                    </IconButton>
+                                                </InputAdornment>
+                                            ),
+                                        },
+                                    }}
                                 />
                             </Grid>
                             <Grid size={{ xs: 12, md: 3 }}>

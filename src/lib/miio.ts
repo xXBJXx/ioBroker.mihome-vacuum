@@ -16,12 +16,15 @@ interface MiioAdapter {
         warn(message: unknown): void;
         error(message: unknown): void;
     };
+
     setConnection(connected: boolean): void;
 }
 
 interface PendingRequest {
     resolve(value: MiioResponse): void;
+
     reject(reason: Error): void;
+
     method: string;
     startedAt: number;
 }
@@ -55,7 +58,6 @@ class Miio extends EventEmitter {
         this.port = this.adapter.config.port || 54_321;
         this.ip = this.adapter.config.ip;
         this.token = stringToHex(this.adapter.config.token);
-
         this.adapter.log.debug('MIIO: Configured local UDP connection');
         this.packet = new Packet(this.token);
         this.server = dgram.createSocket('udp4');

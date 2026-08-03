@@ -187,8 +187,14 @@ describe('Adapter unload lifecycle', () => {
             './lib/dreame': class {},
             './lib/XiaomiCloudConnector': SharedFakeCloudConnector,
         });
-        const firstAdapter = startAdapter({ config: { token: true }, namespace: 'mihome-vacuum.first' });
-        const secondAdapter = startAdapter({ config: { token: true }, namespace: 'mihome-vacuum.second' });
+        const firstAdapter = startAdapter({
+            config: { token: '11111111111111111111111111111111' },
+            namespace: 'mihome-vacuum.first',
+        });
+        const secondAdapter = startAdapter({
+            config: { token: '22222222222222222222222222222222' },
+            namespace: 'mihome-vacuum.second',
+        });
         firstAdapter.namespace = 'mihome-vacuum.first';
         secondAdapter.namespace = 'mihome-vacuum.second';
 
