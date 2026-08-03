@@ -97,6 +97,26 @@ describe('React admin security', () => {
         assert.match(appSource, /delete settings\.devices/);
         assert.match(appSource, /delete settings\.MiDevice/);
         assert.match(appSource, /deviceInfo\.unsupported/);
+        assert.match(appSource, /return super\.onPrepareSave\(settings\)/);
+    });
+
+    it('recovers accidentally plain tokens and encrypts them on the next save', () => {
+        assert.match(appSource, /override onPrepareLoad\(settings:/);
+        assert.match(appSource, /accidentallyPlainToken/);
+        assert.match(appSource, /\[a-f\\d\]\{96\}/);
+        assert.match(appSource, /super\.onPrepareLoad\(settings, encryptedNative\)/);
+        assert.match(appSource, /settings\.token = accidentallyPlainToken/);
+        assert.match(appSource, /this\.recoveredPlainToken = true/);
+        assert.match(appSource, /this\.setState\(\{ changed: true \}\)/);
+    });
+
+    it('describes the browser flow as a login link instead of a QR code', () => {
+        assert.match(appSource, /Create Xiaomi login link/);
+        assert.match(appSource, /Open Xiaomi login link/);
+        assert.match(appSource, /Xiaomi login link help/);
+        assert.match(appSource, /waiting_for_scan: 'Waiting for login'/);
+        assert.match(appSource, /I18n\.t\(authStatusLabels\[this\.state\.auth\.status\]\)/);
+        assert.doesNotMatch(appSource, /Start Xiaomi QR login|QR login help/);
     });
 
     it('provides every new React and timer label in all supported languages', () => {
@@ -108,6 +128,17 @@ describe('React admin security', () => {
             'Timers saved',
             'Unknown device',
             'Invalid timer definition',
+            'Xiaomi cloud authentication',
+            'Create Xiaomi login link',
+            'Open Xiaomi login link',
+            'Could not create Xiaomi login link',
+            'Xiaomi login link help',
+            'Not authenticated',
+            'Waiting for login',
+            'Waiting for confirmation',
+            'Authenticated',
+            'Login link expired',
+            'Authentication error',
         ]) {
             assert.deepEqual(Object.keys(dictionary[key]), languages);
         }

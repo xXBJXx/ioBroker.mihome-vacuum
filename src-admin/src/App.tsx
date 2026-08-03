@@ -29,7 +29,7 @@ import {
     Cloud as CloudIcon,
     HomeRounded,
     Map as MapIcon,
-    QrCode2 as QrCodeIcon,
+    LinkRounded as LoginLinkIcon,
     ScheduleRounded,
     Settings as SettingsIcon,
 } from '@mui/icons-material';
@@ -43,6 +43,7 @@ import { translations } from './translations';
 import { TimerTab } from './TimerTab';
 import type {
     AdminTimer,
+    CloudAuthStatus,
     CloudAuthState,
     DiscoveredDevice,
     DiscoveryHome,
@@ -65,6 +66,15 @@ const cardSx = {
     backgroundImage: 'linear-gradient(145deg, rgba(77, 171, 245, 0.045), transparent 42%)',
     boxShadow: '0 10px 30px rgba(0, 0, 0, 0.08)',
 } as const;
+
+const authStatusLabels: Record<CloudAuthStatus, string> = {
+    not_authenticated: 'Not authenticated',
+    waiting_for_scan: 'Waiting for login',
+    waiting_for_confirmation: 'Waiting for confirmation',
+    authenticated: 'Authenticated',
+    expired: 'Login link expired',
+    error: 'Authentication error',
+};
 
 const defaultNative: VacuumNative = {
     email: '',
@@ -95,6 +105,7 @@ const defaultNative: VacuumNative = {
 class App extends GenericApp<GenericAppProps, VacuumAdminState> {
     private authPollTimer: ReturnType<typeof setInterval> | null = null;
     private loadedToken = '';
+    private recoveredPlainToken = false;
 
     constructor(props: GenericAppProps) {
         super(props, {
@@ -134,7 +145,31 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
         });
     }
 
+    override onPrepareLoad(settings: Record<string, unknown>, encryptedNative?: string[]): void {
+        const storedToken = typeof settings.token === 'string' ? settings.token.trim() : '';
+        const accidentallyPlainToken = /^(?:[a-f\d]{31}|[a-f\d]{32}|[a-f\d]{96})$/i.test(storedToken)
+            ? storedToken
+            : '';
+        if (accidentallyPlainToken) {
+            settings.token = '';
+        }
+        super.onPrepareLoad(settings, encryptedNative);
+        if (accidentallyPlainToken) {
+            settings.token = accidentallyPlainToken;
+            this.recoveredPlainToken = true;
+        }
+    }
+
     override onConnectionReady(): void {
+        if (this.recoveredPlainToken) {
+            globalThis.changed = true;
+            try {
+                window.parent.postMessage('change', '*');
+            } catch {
+                // The embedded admin window may not expose its parent during tests.
+            }
+            this.setState({ changed: true });
+        }
         void this.updateCloudAuth();
         void this.loadTimers(false);
         this.authPollTimer = setInterval(() => void this.updateCloudAuth(), 3_000);
@@ -154,7 +189,7 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
         if (token !== this.loadedToken) {
             void this.socket.setState(`${this.adapterName}.${this.instance}.deviceInfo.unsupported`, '', true);
         }
-        return true;
+        return super.onPrepareSave(settings);
     }
 
     override onSave(isClose?: boolean): void {
@@ -213,7 +248,7 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
             }
             await this.updateCloudAuth();
         } catch {
-            this.showAlert(I18n.t('Could not start Xiaomi QR login'), 'error');
+            this.showAlert(I18n.t('Could not create Xiaomi login link'), 'error');
         } finally {
             this.setState({ authBusy: false });
         }
@@ -368,9 +403,9 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                                 alignItems="center"
                             >
                                 <CloudIcon color="primary" />
-                                <Typography variant="h6">{I18n.t('Xiaomi cloud login')}</Typography>
+                                <Typography variant="h6">{I18n.t('Xiaomi cloud authentication')}</Typography>
                             </Stack>
-                            <InfoBox type="info">{I18n.t('QR login help')}</InfoBox>
+                            <InfoBox type="info">{I18n.t('Xiaomi login link help')}</InfoBox>
                             <Stack
                                 direction={{ xs: 'column', sm: 'row' }}
                                 spacing={2}
@@ -378,11 +413,11 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                             >
                                 <Button
                                     variant="contained"
-                                    startIcon={this.state.authBusy ? <CircularProgress size={18} /> : <QrCodeIcon />}
+                                    startIcon={this.state.authBusy ? <CircularProgress size={18} /> : <LoginLinkIcon />}
                                     disabled={this.state.authBusy || waiting}
                                     onClick={() => void this.startCloudLogin()}
                                 >
-                                    {I18n.t('Start Xiaomi QR login')}
+                                    {I18n.t('Create Xiaomi login link')}
                                 </Button>
                                 <Chip
                                     icon={
@@ -397,7 +432,7 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                                     }
                                     variant="outlined"
                                     sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, px: 0.5 }}
-                                    label={`${I18n.t('Cloud status')}: ${this.state.auth.status}`}
+                                    label={`${I18n.t('Cloud status')}: ${I18n.t(authStatusLabels[this.state.auth.status])}`}
                                 />
                             </Stack>
                             {this.state.auth.lastError ? (
@@ -409,7 +444,7 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                 >
-                                    {I18n.t('Open Xiaomi login')}
+                                    {I18n.t('Open Xiaomi login link')}
                                 </Link>
                             ) : null}
                             <Grid

@@ -100,7 +100,7 @@ Otherwise please follow the instruction in the Link:
 - The port of the robot is set to "54321" by default, this should not be changed
 - Own port, should only be changed with second robot
 - Query Interval The time in ms in which the robot's status values are retrieved (should not be <10000)
-- `wifiInterval` and the e-mail/password fields are retained only for compatibility with existing instance configurations. Current local control does not use Xiaomi credentials, and current cloud authentication uses QR login.
+- `wifiInterval` and the e-mail/password fields are retained only for compatibility with existing instance configurations. Current local control does not use Xiaomi credentials, and current cloud authentication uses a Xiaomi login link.
 
 #### Control over Alexa
 The special control state `clean_home` will be created for Alexa. 
@@ -119,9 +119,9 @@ If two robots are to be controlled via ioBroker, two instances must be created. 
 
 ## Map Config
 
-### Xiaomi Cloud QR login
+### Xiaomi Cloud login link
 
-Xiaomi no longer reliably supports the former username/password login used by this adapter. Cloud features (device discovery and Xiaomi cloud maps) now use Xiaomi's QR login. Start it in the adapter configuration with **Start Xiaomi QR login**, open the displayed URL, then scan and confirm it in the Xiaomi Home app. The same URL and progress are also available as `auth.loginUrl` and `auth.status`.
+Xiaomi no longer reliably supports the former username/password login used by this adapter. Cloud features (device discovery and Xiaomi cloud maps) now use a Xiaomi login link. Create it in the adapter configuration with **Create Xiaomi login link**, open the displayed URL and confirm the login in the browser. The same URL and progress are also available as `auth.loginUrl` and `auth.status`.
 
 The login URL expires after a few minutes. If `auth.status` becomes `expired` or `error`, start the login again. After `authenticated`, use **get devices** as before. The selected Xiaomi region still controls which regional API is queried; use the region in which the vacuum is registered.
 

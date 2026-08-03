@@ -49,13 +49,13 @@ siehe englische Readme
 - Port des Roboters ist Standardmäßig auf `54321` eingestellt, dies sollte nicht verändert werden
 - Eigener Port, sollte nur bei zweiten Roboter geändert werden
 - Abfrageintervall ist die Zeit in ms, in der die Statuswerte des Roboters abgerufen werden (sollte nicht <10000 sein)
-- `wifiInterval` sowie die E-Mail-/Passwortfelder bleiben nur zur Kompatibilität mit vorhandenen Instanzkonfigurationen erhalten. Die lokale Steuerung benötigt keine Xiaomi-Zugangsdaten; die aktuelle Cloud-Anmeldung verwendet QR-Login.
+- `wifiInterval` sowie die E-Mail-/Passwortfelder bleiben nur zur Kompatibilität mit vorhandenen Instanzkonfigurationen erhalten. Die lokale Steuerung benötigt keine Xiaomi-Zugangsdaten; die aktuelle Cloud-Anmeldung verwendet einen Xiaomi-Anmeldelink.
 
-#### Xiaomi-Cloud-QR-Anmeldung
+#### Xiaomi-Cloud-Anmeldelink
 
-Gerätesuche und Xiaomi-Cloud-Karten verwenden die QR-Anmeldung. In der Adapterkonfiguration **Xiaomi-QR-Anmeldung starten** auswählen, die angezeigte URL öffnen und die Anmeldung in der Xiaomi-Home-App scannen und bestätigen. Fortschritt und URL stehen zusätzlich in `auth.status` und `auth.loginUrl`.
+Gerätesuche und Xiaomi-Cloud-Karten verwenden einen Xiaomi-Anmeldelink. In der Adapterkonfiguration **Xiaomi-Anmeldelink erstellen** auswählen, die angezeigte URL öffnen und die Anmeldung im Browser bestätigen. Fortschritt und URL stehen zusätzlich in `auth.status` und `auth.loginUrl`.
 
-Die URL läuft nach einigen Minuten ab. Bei `expired` oder `error` muss die QR-Anmeldung erneut ausdrücklich gestartet werden. Nach `authenticated` kann die Gerätesuche verwendet werden. Die Sitzung wird geschützt und verschlüsselt in der Instanzkonfiguration gespeichert. Lokale Steuerung über IP und Token bleibt davon unabhängig.
+Die URL läuft nach einigen Minuten ab. Bei `expired` oder `error` muss ein neuer Anmeldelink ausdrücklich erstellt werden. Nach `authenticated` kann die Gerätesuche verwendet werden. Die Sitzung wird geschützt und verschlüsselt in der Instanzkonfiguration gespeichert. Lokale Steuerung über IP und Token bleibt davon unabhängig.
 
 #### Steuerung über Alexa
 In der Konfiguration add Alexa state aktivieren, 
