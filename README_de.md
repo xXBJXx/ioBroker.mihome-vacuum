@@ -53,6 +53,7 @@ siehe englische Readme
 - Der lokale Gerätetoken wird wie die gespeicherte Cloud-Sitzung als geschützte native Konfiguration mit der aktuellen ioBroker-Verschlüsselung `$/aes-192-cbc:` abgelegt.
 - js-controller entschlüsselt den geschützten Token vor dem Adapterstart; das Backend prüft den entschlüsselten Token zusätzlich, bevor es ihn verwendet.
 - Über die Augen-Schaltfläche im Tokenfeld lässt sich der Token während der Bearbeitung vorübergehend ein- oder ausblenden.
+- Die **erweiterte Diagnoseprotokollierung** ist standardmäßig aus und ergänzt bei Aktivierung Konfigurations-, lokale API- und Xiaomi-Cloud-Ablaufdetails auf Debug-Ebene. Zugangsdaten, Sitzungen, Cookies, Anmeldelinks, Netzwerkkennungen und vollständige API-Werte bleiben auch dann redigiert.
 
 #### Xiaomi-Cloud-Anmeldelink
 

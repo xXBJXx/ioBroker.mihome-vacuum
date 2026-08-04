@@ -235,6 +235,7 @@
     "lib": "",
     "enableMiMap": false,
     "enableSelfCommands": false,
+    "enableAdvancedDebug": false,
     "sendPauseBeforeHome": false,
     "enableResumeZone": false,
     "port": 54321,

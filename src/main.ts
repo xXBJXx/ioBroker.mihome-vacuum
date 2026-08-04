@@ -1,6 +1,7 @@
 'use strict';
 /* eslint-disable jsdoc/check-tag-names */
 import type { AdapterRuntimeObject, RoomEnumObject } from './types/main';
+import { logAdvancedDiagnostic } from './lib/diagnostics';
 
 /*
  * Created with @iobroker/create-adapter v1.27.0
@@ -48,6 +49,26 @@ export class MihomeVacuum extends utils.Adapter {
             // @ts-ignore legacy adapter config is runtime-validated
             this.config.pingInterval = 10000;
         }
+
+        this.advancedDiagnostic('adapter configuration', {
+            region: this.config.server,
+            model: this.config.model,
+            manager: this.config.manager || 'auto',
+            vacuumPort: this.config.port,
+            ownPort: this.config.ownPort,
+            pingInterval: this.config.pingInterval,
+            wifiInterval: this.config.wifiInterval,
+            enableMiMap: this.config.enableMiMap === true,
+            enableSelfCommands: this.config.enableSelfCommands === true,
+            enableResumeZone: this.config.enableResumeZone === true,
+            sendPauseBeforeHome: this.config.sendPauseBeforeHome === true,
+            valetudoEnabled: this.config.valetudo_enable === true,
+            deviceCredentialConfigured: typeof this.config.token === 'string' && this.config.token.length > 0,
+            accountCredentialConfigured: typeof this.config.password === 'string' && this.config.password.length > 0,
+            cloudAuthenticationConfigured:
+                typeof this.config.cloudSession === 'string' && this.config.cloudSession.length > 0,
+            localAddressConfigured: typeof this.config.ip === 'string' && this.config.ip.length > 0,
+        });
 
         // encryptedNative is decrypted by js-controller before the ready event. Validate the
         // resulting clear-text token before it can reach the local UDP protocol implementation.
@@ -142,6 +163,10 @@ export class MihomeVacuum extends utils.Adapter {
         }
     }
 
+    advancedDiagnostic(operation, details) {
+        logAdvancedDiagnostic(this.log, this.config.enableAdvancedDebug === true, operation, details);
+    }
+
     isUnsupportedFeature(key) {
         return this.unsupportedFeatures.indexOf(`|${key}|`) >= 0;
     }
@@ -167,6 +192,7 @@ export class MihomeVacuum extends utils.Adapter {
         for (let i = 0; i < 5; i++) {
             DeviceData = await this.getModelFromApi();
             if (DeviceData) {
+                this.advancedDiagnostic('local miIO.info response structure', { payload: DeviceData });
                 this.log.debug(`miIO.info attempt ${i + 1}/5 succeeded`);
                 await this.setModelInfoObject(DeviceData.result);
                 DeviceModel = DeviceData.result.model;
@@ -596,7 +622,9 @@ export class MihomeVacuum extends utils.Adapter {
                     const result = await this.xiaomiApi.login();
                     if (result.ok) {
                         try {
-                            respond(await this.xiaomiApi.getDevices(obj.message.server));
+                            const devices = await this.xiaomiApi.getDevices(obj.message.server);
+                            this.log.debug('Cloud device discovery completed');
+                            respond(devices);
                         } catch (error) {
                             respond({
                                 err: error instanceof Error ? error.message : 'Could not retrieve Xiaomi devices',

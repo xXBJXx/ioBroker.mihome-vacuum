@@ -10,6 +10,7 @@ import {
     type XiaomiEncryptedParams,
 } from './XiaomiCloudCrypto';
 import { isValidCloudSession, decodeStoredCloudSession } from './XiaomiCloudSession';
+import { logAdvancedDiagnostic } from './diagnostics';
 import {
     mergeSessionCookies,
     buildCookieHeader,
@@ -187,6 +188,10 @@ class XiaomiCloudConnector {
         }
     }
 
+    advancedDiagnostic(operation: string, details: unknown): void {
+        logAdvancedDiagnostic(this.logger, this.adapter?.config?.enableAdvancedDebug === true, operation, details);
+    }
+
     mergeSetCookie(setCookie: unknown): void {
         this.sessionCookies = mergeSessionCookies(this.sessionCookies, setCookie);
     }
@@ -223,6 +228,10 @@ class XiaomiCloudConnector {
                 headers: { 'User-Agent': this.agent, Accept: '*/*' },
                 signal: this.abortController.signal,
             });
+            this.advancedDiagnostic('cloud login initialization response', {
+                status: response.status,
+                payload: response.data,
+            });
             const data = asRecord(this.parseJSON(response.data));
             if (response.status !== 200 || typeof data?.loginUrl !== 'string' || typeof data.lp !== 'string') {
                 this.logger.debug(`Cloud auth: QR login initialization returned HTTP ${response.status}`);
@@ -253,6 +262,10 @@ class XiaomiCloudConnector {
                     timeout: LONG_POLL_TIMEOUT_MS,
                     signal: this.abortController?.signal,
                     headers: { 'User-Agent': this.agent, Cookie: this.buildCookieHeader() },
+                });
+                this.advancedDiagnostic('cloud login polling response', {
+                    status: response.status,
+                    payload: response.data,
                 });
                 const data = asRecord(this.parseJSON(response.data));
                 const userId = toCloudString(data?.userId);
@@ -303,6 +316,12 @@ class XiaomiCloudConnector {
                 headers: { 'User-Agent': this.agent, Cookie: this.buildCookieHeader() },
                 maxRedirects: 0,
                 signal: this.abortController?.signal,
+            });
+            this.advancedDiagnostic('cloud service-token response', {
+                status: response.status,
+                redirect,
+                hasSetCookie: Array.isArray(response.headers['set-cookie']),
+                hasLocation: typeof response.headers.location === 'string',
             });
             this.mergeSetCookie(response.headers['set-cookie']);
             const serviceToken = this.getCookie('serviceToken');
@@ -366,6 +385,7 @@ class XiaomiCloudConnector {
         const data = JSON.stringify({ fg: true, fetch_share: true, fetch_share_dev: true, limit: 300, app_ver: 7 });
         const json = (await this.executeEncryptedApiCall(url, { data })) as XiaomiHomeResponse;
         this.homeIds = json?.result?.homelist?.map(home => home.id) || [];
+        this.advancedDiagnostic('cloud home discovery summary', { region: country, homeCount: this.homeIds.length });
     }
 
     async getDevices(
@@ -394,6 +414,11 @@ class XiaomiCloudConnector {
                 }),
             });
         }
+        this.advancedDiagnostic('cloud device discovery summary', {
+            region: country,
+            requestedHomeCount: selectedHomeIds.length,
+            response: devices,
+        });
         return devices;
     }
 
@@ -412,6 +437,12 @@ class XiaomiCloudConnector {
             { ...params },
             cloudSession.ssecurity,
         );
+        const operation = new URL(url).pathname.split('/').slice(-3).join('/');
+        this.advancedDiagnostic('cloud API request', {
+            operation,
+            method: 'POST',
+            encryptedFieldCount: Object.keys(fields).length,
+        });
         try {
             const response = await this.session.post<string>(`${url}?${qs.stringify(fields, { encode: true })}`, null, {
                 headers: {
@@ -423,6 +454,11 @@ class XiaomiCloudConnector {
                     Cookie: `userId=${this.userId}; yetAnotherServiceToken=${this.serviceToken}; serviceToken=${this.serviceToken}; ${this.buildCookieHeader()}`,
                 },
             });
+            this.advancedDiagnostic('cloud API encrypted response', {
+                operation,
+                status: response.status,
+                encryptedBytes: typeof response.data === 'string' ? response.data.length : 0,
+            });
             if ([401, 403].includes(response.status)) {
                 await this.invalidateSession('not_authenticated', 'Xiaomi Cloud session is no longer authorized');
                 throw new Error('Xiaomi Cloud session is no longer authorized');
@@ -430,7 +466,11 @@ class XiaomiCloudConnector {
             if (response.status !== 200) {
                 throw new Error(`Xiaomi Cloud request failed (HTTP ${response.status})`);
             }
-            return JSON.parse(new XiaomiRC4Cipher(nonceSignature).decrypt(response.data).replace('&&&START&&&', ''));
+            const decrypted = JSON.parse(
+                new XiaomiRC4Cipher(nonceSignature).decrypt(response.data).replace('&&&START&&&', ''),
+            );
+            this.advancedDiagnostic('cloud API decrypted response structure', { operation, payload: decrypted });
+            return decrypted;
         } catch (error) {
             throw new Error(this.safeError(error));
         }

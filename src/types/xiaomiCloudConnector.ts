@@ -17,6 +17,7 @@ export interface XiaomiCloudAdapterObject {
 export interface XiaomiCloudAdapter {
     config?: {
         cloudSession?: unknown;
+        enableAdvancedDebug?: boolean;
     };
     namespace: string;
     encrypt?(value: string): string;

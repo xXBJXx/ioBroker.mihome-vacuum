@@ -16,6 +16,8 @@
     "Could not save timers": "Timer konnten nicht gespeichert werden",
     "Could not start Xiaomi QR login": "Xiaomi-QR-Anmeldung konnte nicht gestartet werden",
     "Create Xiaomi login link": "Xiaomi-Anmeldelink erstellen",
+    "Diagnostic logs stay redacted and never include credentials": "Diagnoseprotokolle bleiben redigiert und enthalten niemals Zugangsdaten",
+    "Enable advanced diagnostic logging": "Erweiterte Diagnoseprotokollierung aktivieren",
     "Enable Valetudo": "Aktiviere Valetudo",
     "Enable a map source first": "Zuerst eine Kartenquelle aktivieren",
     "Friday": "Freitag",

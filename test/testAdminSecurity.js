@@ -14,6 +14,8 @@ describe('Materialize admin security', () => {
     it('creates device options without HTML string concatenation', () => {
         assert.match(adminSource, /createDeviceOption/);
         assert.match(adminSource, /\.text\(label\)/);
+        assert.match(adminSource, /deviceOptions\.length === 1/);
+        assert.match(adminSource, /!\$\('#token'\)\.val\(\)/);
         assert.doesNotMatch(adminSource, /#devices['"]\)\.html\(/);
     });
 
@@ -62,6 +64,7 @@ describe('Materialize admin security', () => {
 
 describe('React admin security', () => {
     const appSource = fs.readFileSync(path.join(__dirname, '..', 'src-admin', 'src', 'App.tsx'), 'utf8');
+    const materializeSource = fs.readFileSync(path.join(__dirname, '..', 'admin', 'index_m.html'), 'utf8');
     const mainSource = fs.readFileSync(path.join(__dirname, '..', 'src-admin', 'src', 'main.tsx'), 'utf8');
     const timerSource = fs.readFileSync(path.join(__dirname, '..', 'src-admin', 'src', 'TimerTab.tsx'), 'utf8');
     const ioPackage = require('../io-package.json');
@@ -72,6 +75,13 @@ describe('React admin security', () => {
         assert.match(appSource, /device\.localip \? ` – \$\{device\.localip\}` : ''/);
         assert.doesNotMatch(appSource, /value=\{JSON\.stringify\(device\)\}/);
         assert.doesNotMatch(appSource, /device\.token\}\s*<\/MenuItem>/);
+    });
+
+    it('autofills only missing settings from discovered vacuum devices', () => {
+        assert.match(appSource, /specType\.toLowerCase\(\)\.includes\(':device:vacuum:'\)/);
+        assert.match(appSource, /devices\.length === 1 \? 0 : ''/);
+        assert.match(appSource, /!native\[key\]\.trim\(\) && value\.trim\(\)/);
+        assert.doesNotMatch(appSource, /this\.updateNative\('token', device\.token\)/);
     });
 
     it('polls QR authentication safely and cleans up its timer', () => {
@@ -101,6 +111,12 @@ describe('React admin security', () => {
         assert.match(appSource, /delete settings\.MiDevice/);
         assert.match(appSource, /deviceInfo\.unsupported/);
         assert.doesNotMatch(appSource, /return super\.onPrepareSave\(settings\)/);
+    });
+
+    it('offers opt-in diagnostics while keeping the redaction warning visible', () => {
+        assert.match(appSource, /checked=\{this\.state\.native\.enableAdvancedDebug\}/);
+        assert.match(appSource, /Diagnostic logs stay redacted and never include credentials/);
+        assert.match(materializeSource, /id="enableAdvancedDebug" type="checkbox"/);
     });
 
     it('uses the official asynchronous ioBroker encryption contract for protected configuration', () => {
@@ -171,6 +187,8 @@ describe('React admin security', () => {
             'Could not encrypt protected configuration',
             'Hide token',
             'Show token',
+            'Enable advanced diagnostic logging',
+            'Diagnostic logs stay redacted and never include credentials',
         ]) {
             assert.deepEqual(Object.keys(dictionary[key]), languages);
         }

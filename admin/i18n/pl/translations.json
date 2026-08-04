@@ -16,6 +16,8 @@
     "Could not save timers": "Nie udało się zapisać timerów",
     "Could not start Xiaomi QR login": "Could not start Xiaomi QR login",
     "Create Xiaomi login link": "Create Xiaomi login link",
+    "Diagnostic logs stay redacted and never include credentials": "Diagnostic logs stay redacted and never include credentials",
+    "Enable advanced diagnostic logging": "Enable advanced diagnostic logging",
     "Enable Valetudo": "Włącz Valetudo",
     "Enable a map source first": "Enable a map source first",
     "Friday": "Piątek",

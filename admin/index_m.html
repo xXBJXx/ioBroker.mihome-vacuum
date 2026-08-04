@@ -302,9 +302,9 @@
                 try {
                     const device = JSON.parse(selectedDevice);
                     if (!device || typeof device !== 'object') return;
-                    setValue('token', typeof device.token === 'string' ? device.token : '', onChange);
-                    setValue('ip', typeof device.localip === 'string' ? device.localip : '', onChange);
-                    setValue('model', typeof device.model === 'string' ? device.model : '', onChange);
+                    if (!$('#token').val()) setValue('token', typeof device.token === 'string' ? device.token : '', onChange);
+                    if (!$('#ip').val()) setValue('ip', typeof device.localip === 'string' ? device.localip : '', onChange);
+                    if (!$('#model').val()) setValue('model', typeof device.model === 'string' ? device.model : '', onChange);
                 } catch (error) {
                     showToast(_('Invalid device data'));
                 }
@@ -392,10 +392,13 @@
 
         function createDeviceOption(device) {
             if (!device || typeof device !== 'object') return null;
+            const model = typeof device.model === 'string' ? device.model : '';
+            const specType = typeof device.spec_type === 'string' ? device.spec_type : '';
+            if (!model.toLowerCase().includes('.vacuum.') && !specType.toLowerCase().includes(':device:vacuum:')) return null;
             const entry = {
                 token: typeof device.token === 'string' ? device.token : '',
                 localip: typeof device.localip === 'string' ? device.localip : '',
-                model: typeof device.model === 'string' ? device.model : ''
+                model: model
             };
             const label = entry.model + (entry.localip ? ' - ip: ' + entry.localip : '');
             return $('<option></option>').val(JSON.stringify(entry)).text(label);
@@ -405,6 +408,7 @@
             rawdevices = arr;
             const $devices = $('#devices').empty();
             $devices.append($('<option></option>').val('').text(_('choose Device')));
+            const deviceOptions = [];
 
             if (arr && typeof arr === 'object') {
                 for (let homeId in arr){
@@ -413,11 +417,17 @@
                         home.result.device_info : [];
                     for (let device of devices){
                         const option = createDeviceOption(device);
-                        if (option) $devices.append(option);
+                        if (option) {
+                            $devices.append(option);
+                            deviceOptions.push(option);
+                        }
                     }
                 }
             }
             $devices.select();
+            if (deviceOptions.length === 1) {
+                $devices.val(deviceOptions[0].val()).trigger('change');
+            }
         }
 
         function translateTable(channelStr) {
@@ -710,6 +720,10 @@
                         <input class="value" id="enableResumeZone" type="checkbox"
                             data-link="resume-paused-zonecleaning-with-start-button" />
                         <span class="translate">Resume paused zone cleaning with start button</span>
+                    </div>
+                    <div class="col s12 m6">
+                        <input class="value" id="enableAdvancedDebug" type="checkbox" />
+                        <span class="translate">Enable advanced diagnostic logging</span>
                     </div>
                 </div>
             </div>

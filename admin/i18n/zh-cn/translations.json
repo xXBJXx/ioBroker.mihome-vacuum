@@ -16,6 +16,8 @@
     "Could not save timers": "无法保存定时器",
     "Could not start Xiaomi QR login": "Could not start Xiaomi QR login",
     "Create Xiaomi login link": "Create Xiaomi login link",
+    "Diagnostic logs stay redacted and never include credentials": "Diagnostic logs stay redacted and never include credentials",
+    "Enable advanced diagnostic logging": "Enable advanced diagnostic logging",
     "Enable Valetudo": "启用Valetudo",
     "Enable a map source first": "Enable a map source first",
     "Friday": "星期五",

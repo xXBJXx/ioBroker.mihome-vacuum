@@ -107,6 +107,7 @@ const defaultNative: VacuumNative = {
     manager: '',
     enableMiMap: false,
     enableSelfCommands: false,
+    enableAdvancedDebug: false,
     sendPauseBeforeHome: false,
     enableResumeZone: false,
     port: 54321,
@@ -454,14 +455,27 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                         continue;
                     }
                     const device = entry as Record<string, unknown>;
+                    const model = typeof device.model === 'string' ? device.model : '';
+                    const specType = typeof device.spec_type === 'string' ? device.spec_type : '';
+                    if (
+                        !model.toLowerCase().includes('.vacuum.') &&
+                        !specType.toLowerCase().includes(':device:vacuum:')
+                    ) {
+                        continue;
+                    }
                     devices.push({
                         token: typeof device.token === 'string' ? device.token : '',
                         localip: typeof device.localip === 'string' ? device.localip : '',
-                        model: typeof device.model === 'string' ? device.model : '',
+                        model,
                     });
                 }
             }
-            this.setState({ discoveredDevices: devices, selectedDevice: '' });
+            const selectedDevice = devices.length === 1 ? 0 : '';
+            this.setState({ discoveredDevices: devices, selectedDevice }, () => {
+                if (devices.length === 1) {
+                    this.fillMissingDeviceSettings(devices[0]);
+                }
+            });
             this.showAlert(I18n.t('%s devices found', devices.length), devices.length ? 'success' : 'info');
         } catch {
             this.showAlert(I18n.t('Could not retrieve Xiaomi devices'), 'error');
@@ -479,10 +493,26 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
         if (!device) {
             return;
         }
-        this.updateNative('token', device.token);
-        this.updateNative('ip', device.localip);
-        this.updateNative('model', device.model);
+        this.fillMissingDeviceSettings(device);
     };
+
+    private fillMissingDeviceSettings(device: DiscoveredDevice): void {
+        const native = { ...this.state.native };
+        let changed = false;
+        for (const [key, value] of [
+            ['token', device.token],
+            ['ip', device.localip],
+            ['model', device.model],
+        ] as const) {
+            if (!native[key].trim() && value.trim()) {
+                native[key] = value.trim();
+                changed = true;
+            }
+        }
+        if (changed) {
+            this.setState({ native, changed: true });
+        }
+    }
 
     private loadTimers = async (showErrors = true): Promise<void> => {
         this.setState({ timersLoading: true });
@@ -900,7 +930,26 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                                 }
                                 label={I18n.t('Resume paused zone cleaning with start button')}
                             />
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={this.state.native.enableAdvancedDebug}
+                                        onChange={event =>
+                                            this.updateNative('enableAdvancedDebug', event.target.checked)
+                                        }
+                                    />
+                                }
+                                label={I18n.t('Enable advanced diagnostic logging')}
+                            />
                         </Stack>
+                        {this.state.native.enableAdvancedDebug ? (
+                            <Alert
+                                severity="warning"
+                                sx={{ mt: 2 }}
+                            >
+                                {I18n.t('Diagnostic logs stay redacted and never include credentials')}
+                            </Alert>
+                        ) : null}
                     </CardContent>
                 </Card>
             </Stack>

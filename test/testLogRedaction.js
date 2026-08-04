@@ -13,6 +13,8 @@ describe('Sensitive command logging', () => {
         assert.doesNotMatch(source, /Params:\s*\$\{values\[1\]\}/);
         assert.doesNotMatch(source, /Get self send data:\s*\$\{JSON\.stringify\(DeviceData\)\}/);
         assert.doesNotMatch(source, /JSON\.stringify\(DeviceData(?:\.result)?\)\.replace/);
+        assert.doesNotMatch(source, /JSON\.stringify\(await this\.xiaomiApi\.getDevices/);
+        assert.match(source, /Cloud device discovery completed/);
     });
 
     it('does not log complete adapter message payloads', () => {

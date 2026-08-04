@@ -104,6 +104,7 @@ Otherwise please follow the instruction in the Link:
 - The local device token is stored as protected native configuration using ioBroker's current `$/aes-192-cbc:` encryption, just like the persisted cloud session.
 - js-controller decrypts the protected token before adapter startup; the backend additionally validates the decrypted token before using it.
 - Use the eye button in the token field to temporarily reveal or mask the token while editing the configuration.
+- **Advanced diagnostic logging** is opt-in and adds configuration, local API, and Xiaomi Cloud flow details at debug level. Credentials, sessions, cookies, login URLs, network identifiers, and complete API values remain redacted even when this option is enabled.
 
 #### Control over Alexa
 The special control state `clean_home` will be created for Alexa. 
