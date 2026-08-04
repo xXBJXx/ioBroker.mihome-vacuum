@@ -38,6 +38,7 @@
     "check": "tsc --noEmit -p tsconfig.check.json && npm run check:admin",
     "lint": "eslint -c eslint.config.mjs .",
     "translate": "npm run build:backend && gulp translateAndUpdateWordsJS",
+    "prepare": "npm run build",
     "release": "release-script",
     "dev-server": "dev-server"
   },
