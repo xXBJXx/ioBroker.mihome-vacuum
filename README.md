@@ -102,6 +102,8 @@ Otherwise please follow the instruction in the Link:
 - Query Interval The time in ms in which the robot's status values are retrieved (should not be <10000)
 - `wifiInterval` and the e-mail/password fields are retained only for compatibility with existing instance configurations. Current local control does not use Xiaomi credentials, and current cloud authentication uses a Xiaomi login link.
 - The local device token is stored as protected native configuration using ioBroker's current `$/aes-192-cbc:` encryption, just like the persisted cloud session.
+- js-controller decrypts the protected token before adapter startup; the backend additionally validates the decrypted token before using it.
+- Use the eye button in the token field to temporarily reveal or mask the token while editing the configuration.
 
 #### Control over Alexa
 The special control state `clean_home` will be created for Alexa. 

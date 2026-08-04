@@ -51,6 +51,8 @@ siehe englische Readme
 - Abfrageintervall ist die Zeit in ms, in der die Statuswerte des Roboters abgerufen werden (sollte nicht <10000 sein)
 - `wifiInterval` sowie die E-Mail-/Passwortfelder bleiben nur zur Kompatibilität mit vorhandenen Instanzkonfigurationen erhalten. Die lokale Steuerung benötigt keine Xiaomi-Zugangsdaten; die aktuelle Cloud-Anmeldung verwendet einen Xiaomi-Anmeldelink.
 - Der lokale Gerätetoken wird wie die gespeicherte Cloud-Sitzung als geschützte native Konfiguration mit der aktuellen ioBroker-Verschlüsselung `$/aes-192-cbc:` abgelegt.
+- js-controller entschlüsselt den geschützten Token vor dem Adapterstart; das Backend prüft den entschlüsselten Token zusätzlich, bevor es ihn verwendet.
+- Über die Augen-Schaltfläche im Tokenfeld lässt sich der Token während der Bearbeitung vorübergehend ein- oder ausblenden.
 
 #### Xiaomi-Cloud-Anmeldelink
 
