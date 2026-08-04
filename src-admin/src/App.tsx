@@ -610,7 +610,7 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                             {this.state.auth.lastError ? (
                                 <Alert severity="error">{this.state.auth.lastError}</Alert>
                             ) : null}
-                            {this.state.auth.loginUrl ? (
+                            {waiting && this.state.auth.loginUrl ? (
                                 <Link
                                     href={this.state.auth.loginUrl}
                                     target="_blank"

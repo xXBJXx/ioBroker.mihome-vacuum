@@ -119,6 +119,10 @@ describe('Runtime dependencies', () => {
         assert.match(checkConfigSource, /"src-admin\/"/);
         assert.equal(packageJson.scripts.prepublishOnly, 'npm run build');
         assert.equal(packageJson.scripts.prepare, 'npm run build');
+        assert.equal(
+            fs.readFileSync(path.join(__dirname, '..', '.npmrc'), 'utf8').trim(),
+            'foreground-scripts=false',
+        );
         assert.equal(packageJson.scripts['test:package'], 'npm run build && mocha test/package --exit');
         assert.equal(
             packageJson.scripts['test:package-smoke'],

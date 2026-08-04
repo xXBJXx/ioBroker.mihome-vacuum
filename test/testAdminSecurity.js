@@ -78,6 +78,7 @@ describe('React admin security', () => {
         assert.match(appSource, /setInterval\(\(\) => void this\.updateCloudAuth\(\), 3_000\)/);
         assert.match(appSource, /clearInterval\(this\.authPollTimer\)/);
         assert.match(appSource, /this\.state\.auth\.status !== 'authenticated'/);
+        assert.match(appSource, /waiting && this\.state\.auth\.loginUrl/);
     });
 
     it('uses the authenticated discovery message without legacy credentials', () => {

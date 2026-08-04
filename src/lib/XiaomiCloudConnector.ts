@@ -106,7 +106,7 @@ class XiaomiCloudConnector {
         this.location = saved.location;
         this.serviceToken = saved.serviceToken;
         this.sessionCookies = saved.sessionCookies || '';
-        void this.updateAuth('authenticated');
+        void this.updateAuth('authenticated', { loginUrl: '', lastError: '', expiresAt: 0 });
         return true;
     }
 
