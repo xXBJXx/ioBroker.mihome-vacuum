@@ -57,6 +57,27 @@ export interface VacuumAdminState extends GenericAppState {
     timersSaving: boolean;
     timersDirty: boolean;
     tokenVisible: boolean;
+    tokenStored: boolean;
+    tokenDeleteRequested: boolean;
+    confirmTokenDelete: boolean;
+}
+
+export interface ProtectedConfigStatus {
+    ok?: boolean;
+    tokenStored?: boolean;
+    token?: string;
+    tokenReadable?: boolean;
+    passwordStored?: boolean;
+    cloudSessionStored?: boolean;
+}
+
+export interface ConfigSaveResult {
+    ok?: boolean;
+    tokenStored?: boolean;
+    error?: {
+        code?: string;
+        message?: string;
+    };
 }
 
 export interface AdminTimer {

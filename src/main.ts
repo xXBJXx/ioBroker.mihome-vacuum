@@ -2,6 +2,12 @@
 /* eslint-disable jsdoc/check-tag-names */
 import type { AdapterRuntimeObject, RoomEnumObject } from './types/main';
 import { logAdvancedDiagnostic } from './lib/diagnostics';
+import {
+    mergeProtectedConfig,
+    normalizeDeviceToken,
+    parseProtectedConfigSaveRequest,
+    ProtectedConfigError,
+} from './lib/protectedConfig';
 
 /*
  * Created with @iobroker/create-adapter v1.27.0
@@ -410,6 +416,41 @@ export class MihomeVacuum extends utils.Adapter {
         return { timers, rooms: rooms.map(({ id, name }) => ({ id, name })), channels };
     }
 
+    getProtectedConfigStatus() {
+        const configuredToken = typeof this.config.token === 'string' ? this.config.token : '';
+        let token = '';
+        if (configuredToken) {
+            try {
+                token = normalizeDeviceToken(configuredToken);
+            } catch {
+                // Keep damaged historical values stored, but never return them to the browser as a usable token.
+            }
+        }
+        return {
+            ok: true,
+            tokenStored: configuredToken.length > 0,
+            token,
+            tokenReadable: token.length > 0,
+            passwordStored: typeof this.config.password === 'string' && this.config.password.length > 0,
+            cloudSessionStored: typeof this.config.cloudSession === 'string' && this.config.cloudSession.length > 0,
+        };
+    }
+
+    async saveConfigFromAdmin(message) {
+        const request = parseProtectedConfigSaveRequest(message);
+        const objectId = `system.adapter.${this.namespace}`;
+        const object = await this.getForeignObjectAsync(objectId);
+        if (!object || object.type !== 'instance') {
+            throw new ProtectedConfigError('INSTANCE_NOT_FOUND', 'Adapter instance configuration was not found');
+        }
+
+        const existingNative = object.native as Record<string, unknown>;
+        const merged = mergeProtectedConfig(existingNative, request, value => this.encrypt(value));
+        object.native = merged.native;
+        await this.setForeignObjectAsync(objectId, object);
+        return { ok: true, tokenStored: merged.tokenStored };
+    }
+
     async saveTimersFromAdmin(timers) {
         if (!Array.isArray(timers)) {
             throw new Error('Timers must be an array');
@@ -644,6 +685,35 @@ export class MihomeVacuum extends utils.Adapter {
                     respond(await this.xiaomiApi.startQrLogin());
                     return;
                 }
+
+                case 'getProtectedConfigStatus':
+                    if (!/^system\.adapter\.admin\.\d+$/.test(obj.from || '')) {
+                        respond({ ok: false, error: { code: 'ADMIN_ONLY', message: 'Admin access required' } });
+                        return;
+                    }
+                    respond(this.getProtectedConfigStatus());
+                    return;
+
+                case 'saveConfig':
+                    if (!/^system\.adapter\.admin\.\d+$/.test(obj.from || '')) {
+                        respond({ ok: false, error: { code: 'ADMIN_ONLY', message: 'Admin access required' } });
+                        return;
+                    }
+                    try {
+                        respond(await this.saveConfigFromAdmin(obj.message));
+                    } catch (error) {
+                        respond({
+                            ok: false,
+                            error: {
+                                code: error instanceof ProtectedConfigError ? error.code : 'CONFIG_SAVE_FAILED',
+                                message:
+                                    error instanceof ProtectedConfigError
+                                        ? error.message
+                                        : 'Could not save adapter configuration',
+                            },
+                        });
+                    }
+                    return;
 
                 case 'getTimers':
                     try {

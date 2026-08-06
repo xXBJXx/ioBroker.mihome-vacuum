@@ -10,6 +10,11 @@ import {
     Chip,
     CircularProgress,
     CssBaseline,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogContentText,
+    DialogTitle,
     FormControl,
     FormControlLabel,
     Grid2 as Grid,
@@ -29,6 +34,7 @@ import {
 import {
     CheckCircleRounded,
     Cloud as CloudIcon,
+    DeleteForeverRounded,
     HomeRounded,
     Map as MapIcon,
     LinkRounded as LoginLinkIcon,
@@ -49,10 +55,12 @@ import type {
     AdminTimer,
     CloudAuthStatus,
     CloudAuthState,
+    ConfigSaveResult,
     DiscoveredDevice,
     DiscoveryHome,
     DiscoveryResult,
     TimerAdminResult,
+    ProtectedConfigStatus,
     VacuumAdminState,
     VacuumNative,
 } from './types';
@@ -80,22 +88,7 @@ const authStatusLabels: Record<CloudAuthStatus, string> = {
     error: 'Authentication error',
 };
 
-const officialEncryptionPrefix = '$/aes-192-cbc:';
 const tokenPattern = /^(?:[a-f\d]{31}|[a-f\d]{32}|[a-f\d]{96})$/i;
-type SecretField = 'password' | 'token';
-
-function hexToBytes(value: string): Uint8Array<ArrayBuffer> {
-    const bytes = new Uint8Array(value.length / 2);
-    for (let index = 0; index < value.length; index += 2) {
-        bytes[index / 2] = Number.parseInt(value.slice(index, index + 2), 16);
-    }
-    return bytes;
-}
-
-function bytesToHex(value: ArrayBuffer | Uint8Array): string {
-    const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
-    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-}
 
 const defaultNative: VacuumNative = {
     email: '',
@@ -127,12 +120,8 @@ const defaultNative: VacuumNative = {
 class App extends GenericApp<GenericAppProps, VacuumAdminState> {
     private authPollTimer: ReturnType<typeof setInterval> | null = null;
     private loadedToken = '';
-    private recoveredLegacySecret = false;
-    private secretsLoadFailed = false;
     private saveInProgress = false;
-    private systemSecret = '';
-    private encryptedSecretsToLoad: Partial<Record<SecretField, string>> = {};
-    private encryptedSecretsToSave: Record<SecretField, string> | null = null;
+    private savedNativeSnapshot: Record<string, unknown> = {};
 
     constructor(props: GenericAppProps) {
         super(props, {
@@ -154,61 +143,35 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
             timersSaving: false,
             timersDirty: false,
             tokenVisible: false,
+            tokenStored: false,
+            tokenDeleteRequested: false,
+            confirmTokenDelete: false,
         };
     }
 
     override onLoadConfig(native: Record<string, unknown>): void {
-        this.loadedToken = typeof native.token === 'string' ? native.token.trim() : '';
         this.setState({
             native: {
                 ...defaultNative,
                 ...native,
                 email: typeof native.email === 'string' ? native.email : '',
-                password: typeof native.password === 'string' ? native.password : '',
-                token: typeof native.token === 'string' ? native.token : '',
+                password: '',
+                token: '',
                 ip: typeof native.ip === 'string' ? native.ip : '',
                 model: typeof native.model === 'string' ? native.model : '',
             },
         });
     }
 
-    override async getSystemConfig(): Promise<ioBroker.SystemConfigObject> {
-        const config = await super.getSystemConfig();
-        this.systemSecret = typeof config.native?.secret === 'string' ? config.native.secret : '';
-        return config;
+    override onPrepareLoad(settings: Record<string, unknown>): void {
+        settings.token = '';
+        settings.password = '';
+        delete settings.cloudSession;
+        this.savedNativeSnapshot = JSON.parse(JSON.stringify(settings));
     }
 
-    override onPrepareLoad(settings: Record<string, unknown>): void {
-        for (const field of ['password', 'token'] as const) {
-            const storedValue = typeof settings[field] === 'string' ? settings[field] : '';
-            if (!storedValue) {
-                continue;
-            }
-            if (storedValue.startsWith(officialEncryptionPrefix)) {
-                this.encryptedSecretsToLoad[field] = storedValue;
-                settings[field] = '';
-                continue;
-            }
-            const normalizedValue = storedValue.trim();
-            if (field === 'token' && tokenPattern.test(normalizedValue)) {
-                settings.token = normalizedValue;
-                this.loadedToken = normalizedValue;
-                this.recoveredLegacySecret = true;
-                continue;
-            }
-
-            const legacyValue = this.decrypt(storedValue);
-            if (field === 'password' || tokenPattern.test(legacyValue)) {
-                settings[field] = legacyValue;
-                this.recoveredLegacySecret = true;
-                if (field === 'token') {
-                    this.loadedToken = legacyValue;
-                }
-            } else {
-                settings[field] = '';
-                this.secretsLoadFailed = true;
-            }
-        }
+    override getIsChanged(native: Record<string, unknown>): boolean {
+        return JSON.stringify(native) !== JSON.stringify(this.savedNativeSnapshot);
     }
 
     override onConnectionReady(): void {
@@ -216,135 +179,42 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
     }
 
     private async initializeConnection(): Promise<void> {
-        await this.loadOfficialSecrets();
-        if (this.recoveredLegacySecret) {
-            globalThis.changed = true;
-            try {
-                window.parent.postMessage('change', '*');
-            } catch {
-                // The embedded admin window may not expose its parent during tests.
-            }
-            this.setState({ changed: true });
-        }
+        await this.loadProtectedConfigStatus();
         void this.updateCloudAuth();
         void this.loadTimers(false);
         this.authPollTimer = setInterval(() => void this.updateCloudAuth(), 3_000);
     }
 
-    private async loadOfficialSecrets(): Promise<void> {
-        const entries = Object.entries(this.encryptedSecretsToLoad) as [SecretField, string][];
-        if (!entries.length) {
-            return;
-        }
+    private async loadProtectedConfigStatus(): Promise<void> {
         try {
-            const decryptedEntries = await Promise.all(
-                entries.map(async ([field, value]) => [field, await this.decryptProtectedValue(value)] as const),
+            const result = await this.socket.sendTo<ProtectedConfigStatus>(
+                `${this.adapterName}.${this.instance}`,
+                'getProtectedConfigStatus',
+                {},
             );
-            const native = { ...this.state.native };
-            for (const [field, value] of decryptedEntries) {
-                native[field] = value;
-                if (field === 'token') {
-                    this.loadedToken = value;
-                }
+            if (!result?.ok) {
+                throw new Error('PROTECTED_CONFIG_STATUS_UNAVAILABLE');
             }
-            this.setState({ native });
+            const token = typeof result.token === 'string' && tokenPattern.test(result.token) ? result.token : '';
+            const native = { ...this.state.native, token };
+            this.loadedToken = token;
+            this.savedNativeSnapshot = JSON.parse(JSON.stringify(native));
+            this.setState({ native, tokenStored: result.tokenStored === true, changed: false });
         } catch {
-            this.secretsLoadFailed = true;
-            this.showAlert(I18n.t('Could not decrypt protected configuration'), 'error');
-        } finally {
-            this.encryptedSecretsToLoad = {};
+            this.showAlert(I18n.t('Could not load protected configuration status'), 'error');
         }
-    }
-
-    private canUseOfficialBrowserCrypto(): boolean {
-        return /^[0-9a-f]{48}$/.test(this.systemSecret) && !!globalThis.crypto?.subtle;
-    }
-
-    private async encryptProtectedValue(value: string): Promise<string> {
-        if (!this.canUseOfficialBrowserCrypto()) {
-            return this.socket.encrypt(value);
-        }
-        const key = await globalThis.crypto.subtle.importKey(
-            'raw',
-            hexToBytes(this.systemSecret),
-            { name: 'AES-CBC' },
-            false,
-            ['encrypt'],
-        );
-        const iv = globalThis.crypto.getRandomValues(new Uint8Array(16));
-        const encrypted = await globalThis.crypto.subtle.encrypt(
-            { name: 'AES-CBC', iv },
-            key,
-            new TextEncoder().encode(value),
-        );
-        return `${officialEncryptionPrefix}${bytesToHex(iv)}:${bytesToHex(encrypted)}`;
-    }
-
-    private async decryptProtectedValue(value: string): Promise<string> {
-        if (!this.canUseOfficialBrowserCrypto() || !value.startsWith(officialEncryptionPrefix)) {
-            return this.socket.decrypt(value);
-        }
-        const [ivHex, encryptedHex] = value.slice(officialEncryptionPrefix.length).split(':', 2);
-        if (!/^[0-9a-f]{32}$/.test(ivHex) || !/^[0-9a-f]+$/.test(encryptedHex)) {
-            throw new Error('Invalid protected configuration format');
-        }
-        const key = await globalThis.crypto.subtle.importKey(
-            'raw',
-            hexToBytes(this.systemSecret),
-            { name: 'AES-CBC' },
-            false,
-            ['decrypt'],
-        );
-        const decrypted = await globalThis.crypto.subtle.decrypt(
-            { name: 'AES-CBC', iv: hexToBytes(ivHex) },
-            key,
-            hexToBytes(encryptedHex),
-        );
-        return new TextDecoder().decode(decrypted);
-    }
-
-    override onPrepareSave(settings: Record<string, unknown>): boolean {
-        const token = typeof settings.token === 'string' ? settings.token.replace(/\s/g, '') : '';
-        if (![31, 32, 96].includes(token.length)) {
-            this.encryptedSecretsToSave = null;
-            this.saveInProgress = false;
-            this.showAlert(I18n.t('Invalid token length. Expected 32 or 96 HEX chars.'), 'error');
-            return false;
-        }
-        settings.token = token;
-        settings.ip = typeof settings.ip === 'string' ? settings.ip.trim() : '';
-        settings.email = typeof settings.email === 'string' ? settings.email.trim() : '';
-        delete settings.devices;
-        delete settings.MiDevice;
-        if (token !== this.loadedToken) {
-            void this.socket.setState(`${this.adapterName}.${this.instance}.deviceInfo.unsupported`, '', true);
-        }
-        if (!this.encryptedSecretsToSave) {
-            this.saveInProgress = false;
-            this.showAlert(I18n.t('Could not encrypt protected configuration'), 'error');
-            return false;
-        }
-        settings.token = this.encryptedSecretsToSave.token;
-        settings.password = this.encryptedSecretsToSave.password;
-        this.encryptedSecretsToSave = null;
-        this.saveInProgress = false;
-        return true;
     }
 
     override onSave(isClose?: boolean): void {
-        void this.saveWithOfficialEncryption(isClose);
+        void this.saveProtectedConfiguration(isClose);
     }
 
-    private async saveWithOfficialEncryption(isClose?: boolean): Promise<void> {
+    private async saveProtectedConfiguration(isClose?: boolean): Promise<void> {
         if (this.saveInProgress) {
             return;
         }
-        if (this.secretsLoadFailed) {
-            this.showAlert(I18n.t('Could not decrypt protected configuration'), 'error');
-            return;
-        }
         const token = typeof this.state.native.token === 'string' ? this.state.native.token.replace(/\s/g, '') : '';
-        if (![31, 32, 96].includes(token.length)) {
+        if (token && !tokenPattern.test(token)) {
             this.showAlert(I18n.t('Invalid token length. Expected 32 or 96 HEX chars.'), 'error');
             return;
         }
@@ -354,26 +224,59 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
             if (this.state.timersDirty && !(await this.saveTimers())) {
                 return;
             }
-            const password = typeof this.state.native.password === 'string' ? this.state.native.password : '';
-            const [encryptedToken, encryptedPassword] = await Promise.all([
-                this.encryptProtectedValue(token),
-                password ? this.encryptProtectedValue(password) : Promise.resolve(''),
-            ]);
-            if (
-                !encryptedToken.startsWith(officialEncryptionPrefix) ||
-                (password && !encryptedPassword.startsWith(officialEncryptionPrefix))
-            ) {
-                throw new Error('Unexpected protected configuration format');
+            const native: Record<string, unknown> = {
+                ...this.state.native,
+                ip: this.state.native.ip.trim(),
+                email: this.state.native.email.trim(),
+            };
+            delete native.token;
+            delete native.password;
+            delete native.cloudSession;
+            delete native.devices;
+            delete native.MiDevice;
+
+            const tokenUpdate = this.state.tokenDeleteRequested
+                ? ({ action: 'delete' } as const)
+                : token && token !== this.loadedToken
+                  ? ({ action: 'replace', value: token } as const)
+                  : ({ action: 'keep' } as const);
+            const result = await this.socket.sendTo<ConfigSaveResult>(
+                `${this.adapterName}.${this.instance}`,
+                'saveConfig',
+                { native, tokenUpdate },
+            );
+            if (!result?.ok) {
+                throw new Error(result?.error?.code || 'CONFIG_SAVE_FAILED');
             }
-            this.encryptedSecretsToSave = { token: encryptedToken, password: encryptedPassword };
-            super.onSave(isClose);
+
+            if (tokenUpdate.action !== 'keep') {
+                void this.socket.setState(`${this.adapterName}.${this.instance}.deviceInfo.unsupported`, '', true);
+            }
+            const savedToken =
+                tokenUpdate.action === 'delete' ? '' : tokenUpdate.action === 'replace' ? token : this.loadedToken;
+            this.loadedToken = savedToken;
+            const savedNative = { ...this.state.native, token: savedToken, password: '' };
+            this.savedNativeSnapshot = JSON.parse(JSON.stringify(savedNative));
+            globalThis.changed = false;
+            try {
+                window.parent.postMessage('nochange', '*');
+            } catch {
+                // The embedded admin window may not expose its parent during tests.
+            }
+            this.setState(
+                {
+                    native: savedNative,
+                    tokenStored: result.tokenStored === true,
+                    tokenDeleteRequested: false,
+                    tokenVisible: false,
+                    changed: false,
+                },
+                () => isClose && GenericApp.onClose(),
+            );
         } catch {
-            this.encryptedSecretsToSave = null;
-            this.showAlert(I18n.t('Could not encrypt protected configuration'), 'error');
+            this.showAlert(I18n.t('Could not save protected configuration'), 'error');
         } finally {
-            if (!this.encryptedSecretsToSave) {
-                this.saveInProgress = false;
-            }
+            this.saveInProgress = false;
         }
     }
 
@@ -499,8 +402,12 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
     private fillMissingDeviceSettings(device: DiscoveredDevice): void {
         const native = { ...this.state.native };
         let changed = false;
+        const discoveredToken = device.token.replace(/\s/g, '');
+        if (tokenPattern.test(discoveredToken) && discoveredToken !== native.token.replace(/\s/g, '')) {
+            native.token = discoveredToken;
+            changed = true;
+        }
         for (const [key, value] of [
-            ['token', device.token],
             ['ip', device.localip],
             ['model', device.model],
         ] as const) {
@@ -510,9 +417,43 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
             }
         }
         if (changed) {
-            this.setState({ native, changed: true });
+            this.setState({ native, tokenDeleteRequested: false, changed: true });
+            globalThis.changed = true;
+            try {
+                window.parent.postMessage('change', '*');
+            } catch {
+                // The embedded admin window may not expose its parent during tests.
+            }
         }
     }
+
+    private confirmDeleteStoredToken = (): void => {
+        this.setState({
+            confirmTokenDelete: false,
+            tokenDeleteRequested: true,
+            tokenVisible: false,
+            native: { ...this.state.native, token: '' },
+            changed: true,
+        });
+        globalThis.changed = true;
+        try {
+            window.parent.postMessage('change', '*');
+        } catch {
+            // The embedded admin window may not expose its parent during tests.
+        }
+    };
+
+    private cancelDeleteStoredToken = (): void => {
+        const native = { ...this.state.native, token: this.loadedToken };
+        const changed = this.state.timersDirty || this.getIsChanged(native);
+        this.setState({ native, tokenDeleteRequested: false, changed });
+        globalThis.changed = changed;
+        try {
+            window.parent.postMessage(changed ? 'change' : 'nochange', '*');
+        } catch {
+            // The embedded admin window may not expose its parent during tests.
+        }
+    };
 
     private loadTimers = async (showErrors = true): Promise<void> => {
         this.setState({ timersLoading: true });
@@ -735,42 +676,87 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                             spacing={2}
                         >
                             <Grid size={{ xs: 12, md: 6 }}>
-                                <TextField
-                                    fullWidth
-                                    type={this.state.tokenVisible ? 'text' : 'password'}
-                                    label={I18n.t('Token')}
-                                    value={this.state.native.token}
-                                    onChange={event => this.updateNative('token', event.target.value.trim())}
-                                    slotProps={{
-                                        input: {
-                                            endAdornment: (
-                                                <InputAdornment position="end">
-                                                    <IconButton
-                                                        aria-label={I18n.t(
-                                                            this.state.tokenVisible ? 'Hide token' : 'Show token',
-                                                        )}
-                                                        title={I18n.t(
-                                                            this.state.tokenVisible ? 'Hide token' : 'Show token',
-                                                        )}
-                                                        edge="end"
-                                                        onClick={() =>
-                                                            this.setState(state => ({
-                                                                tokenVisible: !state.tokenVisible,
-                                                            }))
-                                                        }
-                                                        onMouseDown={event => event.preventDefault()}
-                                                    >
-                                                        {this.state.tokenVisible ? (
-                                                            <VisibilityOffRounded />
-                                                        ) : (
-                                                            <VisibilityRounded />
-                                                        )}
-                                                    </IconButton>
-                                                </InputAdornment>
-                                            ),
-                                        },
-                                    }}
-                                />
+                                <Stack spacing={1}>
+                                    <TextField
+                                        fullWidth
+                                        type={this.state.tokenVisible ? 'text' : 'password'}
+                                        label={I18n.t('Token')}
+                                        value={this.state.native.token}
+                                        onChange={event => {
+                                            this.updateNative('token', event.target.value.trim());
+                                            if (this.state.tokenDeleteRequested) {
+                                                this.setState({ tokenDeleteRequested: false });
+                                            }
+                                        }}
+                                        slotProps={{
+                                            input: {
+                                                endAdornment: (
+                                                    <InputAdornment position="end">
+                                                        <IconButton
+                                                            aria-label={I18n.t(
+                                                                this.state.tokenVisible ? 'Hide token' : 'Show token',
+                                                            )}
+                                                            title={I18n.t(
+                                                                this.state.tokenVisible ? 'Hide token' : 'Show token',
+                                                            )}
+                                                            edge="end"
+                                                            onClick={() =>
+                                                                this.setState(state => ({
+                                                                    tokenVisible: !state.tokenVisible,
+                                                                }))
+                                                            }
+                                                            onMouseDown={event => event.preventDefault()}
+                                                        >
+                                                            {this.state.tokenVisible ? (
+                                                                <VisibilityOffRounded />
+                                                            ) : (
+                                                                <VisibilityRounded />
+                                                            )}
+                                                        </IconButton>
+                                                    </InputAdornment>
+                                                ),
+                                            },
+                                        }}
+                                    />
+                                    {this.state.tokenDeleteRequested ? (
+                                        <Alert
+                                            severity="warning"
+                                            action={
+                                                <Button
+                                                    color="inherit"
+                                                    size="small"
+                                                    onClick={this.cancelDeleteStoredToken}
+                                                >
+                                                    {I18n.t('Keep stored token')}
+                                                </Button>
+                                            }
+                                        >
+                                            {I18n.t('Token will be deleted when the configuration is saved.')}
+                                        </Alert>
+                                    ) : this.state.tokenStored ? (
+                                        <Stack
+                                            direction={{ xs: 'column', sm: 'row' }}
+                                            spacing={1}
+                                            alignItems={{ sm: 'center' }}
+                                        >
+                                            <Chip
+                                                color="success"
+                                                variant="outlined"
+                                                label={I18n.t('Token is stored')}
+                                            />
+                                            <Button
+                                                color="error"
+                                                size="small"
+                                                startIcon={<DeleteForeverRounded />}
+                                                onClick={() => this.setState({ confirmTokenDelete: true })}
+                                            >
+                                                {I18n.t('Delete stored token')}
+                                            </Button>
+                                        </Stack>
+                                    ) : (
+                                        <Alert severity="info">{I18n.t('No token is stored')}</Alert>
+                                    )}
+                                </Stack>
                             </Grid>
                             <Grid size={{ xs: 12, md: 3 }}>
                                 <TextField
@@ -1163,6 +1149,30 @@ class App extends GenericApp<GenericAppProps, VacuumAdminState> {
                     {this.renderError()}
                     {this.renderHelperDialogs()}
                     {this.renderAlertSnackbar()}
+                    <Dialog
+                        open={this.state.confirmTokenDelete}
+                        onClose={() => this.setState({ confirmTokenDelete: false })}
+                    >
+                        <DialogTitle>{I18n.t('Delete stored token?')}</DialogTitle>
+                        <DialogContent>
+                            <DialogContentText>
+                                {I18n.t('The stored token will only be deleted after you save the configuration.')}
+                            </DialogContentText>
+                        </DialogContent>
+                        <DialogActions>
+                            <Button onClick={() => this.setState({ confirmTokenDelete: false })}>
+                                {I18n.t('Cancel')}
+                            </Button>
+                            <Button
+                                color="error"
+                                variant="contained"
+                                startIcon={<DeleteForeverRounded />}
+                                onClick={this.confirmDeleteStoredToken}
+                            >
+                                {I18n.t('Delete token')}
+                            </Button>
+                        </DialogActions>
+                    </Dialog>
                 </Box>
             </ThemeProvider>
         );

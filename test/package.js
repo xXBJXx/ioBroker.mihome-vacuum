@@ -63,9 +63,10 @@ describe('Runtime dependencies', () => {
         const packageJson = require('../package.json');
         const ioPackage = require('../io-package.json');
 
-        assert.equal(packageJson.engines.node, '>=24');
+        assert.equal(packageJson.engines.node, '>=22.13.0');
         assert.equal(ioPackage.common.dependencies[0]['js-controller'], '>=7.2.2');
-        assert.equal(ioPackage.common.globalDependencies[0].admin, '>=7.9.13');
+        assert.equal(ioPackage.common.globalDependencies[0].admin, '>=7.8.23');
+        assert.equal(packageJson.devDependencies['@types/node'], '^22.20.0');
     });
 
     it('uses defaults matching every declared object value type', () => {
@@ -238,10 +239,10 @@ describe('Runtime dependencies', () => {
     it('runs every CI job on the supported Node.js baseline', () => {
         const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'test-and-release.yml'), 'utf8');
 
-        assert.match(workflow, /node-version: 24\.x/);
-        assert.match(workflow, /node-version: \[24\.x\]/);
-        assert.doesNotMatch(workflow, /node-version: (?:18|20|22)\.x/);
-        assert.doesNotMatch(workflow, /node-version: \[[^\]]*(?:18|20|22)\.x/);
+        assert.match(workflow, /node-version: 22\.x/);
+        assert.match(workflow, /node-version: \[22\.x\]/);
+        assert.doesNotMatch(workflow, /node-version: (?:18|20|24)\.x/);
+        assert.doesNotMatch(workflow, /node-version: \[[^\]]*(?:18|20|24)\.x/);
         assert.equal([...workflow.matchAll(/actions\/checkout@v6/g)].length, 3);
         assert.equal([...workflow.matchAll(/actions\/setup-node@v6/g)].length, 3);
         assert.doesNotMatch(workflow, /actions\/(?:checkout|setup-node)@v[1-5]/);
@@ -257,7 +258,7 @@ describe('Runtime dependencies', () => {
         assert.match(deployJob, /contents: write/);
         assert.match(deployJob, /id-token: write/);
         assert.match(deployJob, /uses: ioBroker\/testing-action-deploy@v1/);
-        assert.match(deployJob, /node-version: "24\.x"/);
+        assert.match(deployJob, /node-version: "22\.x"/);
         assert.match(deployJob, /package-cache: "false"/);
         assert.match(
             deployJob,
