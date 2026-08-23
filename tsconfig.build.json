@@ -10,7 +10,8 @@
         "outDir": "build",
         "rootDir": "src",
         "sourceMap": true,
-        "target": "ES2022"
+        "target": "ES2022",
+        "types": ["node", "@iobroker/types"]
     },
     "include": ["src/**/*.ts"],
     "exclude": ["node_modules"]
