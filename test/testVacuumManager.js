@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const proxyquire = require('proxyquire').noCallThru();
+const sinon = require('sinon');
 
 class FakeMapHelper {
     constructor() {
@@ -64,6 +65,49 @@ function createManager(sendMessage = async () => ({})) {
 }
 
 describe('VacuumManager lifecycle', () => {
+    it('keeps the manager context for the delayed status update after startVacuuming', async () => {
+        const clock = sinon.useFakeTimers();
+        try {
+            const methods = [];
+            const { manager } = createManager(async method => {
+                methods.push(method);
+                return { result: ['ok'] };
+            });
+            let statusCalls = 0;
+            manager.setGetStatus = async function () {
+                assert.equal(this, manager);
+                statusCalls++;
+            };
+
+            await manager.onMessage({ command: 'startVacuuming', message: null });
+            await clock.tickAsync(2_000);
+
+            assert.deepEqual(methods, ['app_start']);
+            assert.equal(statusCalls, 1);
+            await manager.close();
+        } finally {
+            clock.restore();
+        }
+    });
+
+    it('starts cleaning from a control state without sending the command to itself', async () => {
+        const methods = [];
+        const { manager, adapter } = createManager(async method => {
+            methods.push(method);
+            return { result: ['ok'] };
+        });
+        let selfMessages = 0;
+        adapter.sendTo = () => selfMessages++;
+        adapter.setForeignState = () => undefined;
+        manager.startCleaning = async () => true;
+
+        await manager.stateChange('mihome-vacuum.0.control.clean_home', { val: true, ack: false });
+
+        assert.equal(selfMessages, 0);
+        assert.deepEqual(methods, ['app_start']);
+        await manager.close();
+    });
+
     it('waits for resume-state cleanup without deleting the shared control channel', async () => {
         const { manager, adapter } = createManager();
         adapter.config.enableResumeZone = true;

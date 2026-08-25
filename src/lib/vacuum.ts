@@ -874,7 +874,6 @@ class VacuumManager {
                 case 'clean_home':
                 case 'start':
                     if (state.val) {
-                        this.adapter.sendTo(this.adapter.namespace, 'startVacuuming', null);
                         if (await this.startCleaning(cleanStates.Cleaning, {})) {
                             await this.Miio.sendMessage('app_start');
                         }
@@ -1157,7 +1156,12 @@ class VacuumManager {
                 // cleaning commands
                 case 'startVacuuming': {
                     const answer = await this.Miio.sendMessage('app_start');
-                    this.globalTimeouts['onMessage'] = setTimeout(this.setGetStatus, 2000);
+                    this.globalTimeouts['onMessage'] = setTimeout(() => {
+                        void this.setGetStatus().catch(() => {
+                            this.Error = true;
+                            this.adapter.log.debug('Delayed status update failed');
+                        });
+                    }, 2000);
                     return answer;
                 }
                 case 'stopVacuuming':
